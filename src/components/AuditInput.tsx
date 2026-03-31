@@ -1,11 +1,19 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type DragEventHandler } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Globe, Upload, FileText, X } from "lucide-react";
 
 interface AuditInputProps {
-  onStartAudit: (type: "url" | "file", data: string | File) => void;
+  onStartAudit: (
+    type: "url" | "file",
+    data: string | File,
+    options?: {
+      maxPages: number;
+      maxDepth: number;
+      concurrency: number;
+    }
+  ) => void;
   isAuditing: boolean;
 }
 
@@ -13,6 +21,9 @@ const AuditInput = ({ onStartAudit, isAuditing }: AuditInputProps) => {
   const [url, setUrl] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState<"url" | "file">("url");
+  const [maxPages, setMaxPages] = useState(20);
+  const [maxDepth, setMaxDepth] = useState(3);
+  const [concurrency, setConcurrency] = useState(3);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -28,10 +39,28 @@ const AuditInput = ({ onStartAudit, isAuditing }: AuditInputProps) => {
 
   const handleSubmit = () => {
     if (activeTab === "url" && url.trim()) {
-      onStartAudit("url", url.trim());
+      onStartAudit("url", url.trim(), {
+        maxPages: Math.max(1, maxPages),
+        maxDepth: Math.max(0, maxDepth),
+        concurrency: Math.max(1, concurrency),
+      });
     } else if (activeTab === "file" && uploadedFile) {
       onStartAudit("file", uploadedFile);
     }
+  };
+
+  const handleUrlDrop: DragEventHandler<HTMLDivElement> = (event) => {
+    event.preventDefault();
+    const uriList = event.dataTransfer.getData("text/uri-list");
+    const plainText = event.dataTransfer.getData("text/plain");
+    const dropped = (uriList || plainText || "").trim();
+    if (dropped) {
+      setUrl(dropped);
+    }
+  };
+
+  const handleUrlDragOver: DragEventHandler<HTMLDivElement> = (event) => {
+    event.preventDefault();
   };
 
   return (
@@ -65,7 +94,7 @@ const AuditInput = ({ onStartAudit, isAuditing }: AuditInputProps) => {
       </div>
 
       {activeTab === "url" ? (
-        <div className="space-y-4">
+        <div className="space-y-4" onDrop={handleUrlDrop} onDragOver={handleUrlDragOver}>
           <div className="relative">
             <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -75,6 +104,41 @@ const AuditInput = ({ onStartAudit, isAuditing }: AuditInputProps) => {
               className="pl-10"
               disabled={isAuditing}
             />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Max Pages</label>
+              <Input
+                type="number"
+                min={1}
+                max={200}
+                value={maxPages}
+                onChange={(e) => setMaxPages(Number(e.target.value) || 1)}
+                disabled={isAuditing}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Max Depth</label>
+              <Input
+                type="number"
+                min={0}
+                max={10}
+                value={maxDepth}
+                onChange={(e) => setMaxDepth(Number(e.target.value) || 0)}
+                disabled={isAuditing}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Concurrency</label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={concurrency}
+                onChange={(e) => setConcurrency(Number(e.target.value) || 1)}
+                disabled={isAuditing}
+              />
+            </div>
           </div>
           <Button
             onClick={handleSubmit}

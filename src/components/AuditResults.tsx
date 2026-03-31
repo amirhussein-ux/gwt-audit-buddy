@@ -21,6 +21,12 @@ export interface AuditResultData {
     stage2: number;
     stage3: number;
     stage4: number;
+    // transmuted points (optional) used only for Web Presence UI
+    stage1Point?: number;
+    stage2Point?: number;
+    stage3Point?: number;
+    stage4Point?: number;
+    legend?: Record<string, { label: string; color: string }>;
     total: number;
   };
   webUsability: {
@@ -31,6 +37,25 @@ export interface AuditResultData {
     total: number;
   };
   categories: AuditCategory[];
+  methodology?: {
+    mappedGuidelines: number;
+    evaluatedGuidelines: number;
+    coveragePercent: number;
+    pagesCrawled: number;
+    generatedAt: string;
+  };
+  traceability?: {
+    rowNo: string;
+    key: string;
+    guideline: string;
+    category: string;
+    assessmentForm: string;
+    assessmentStage?: string;
+    assessmentSection: string;
+    automationMethod: string;
+    status: "Pass" | "Fail" | "N/A";
+    evidence: string;
+  }[];
 }
 
 interface AuditResultsProps {
@@ -60,8 +85,61 @@ const getRemarkLabel = (pct: number) => {
   return "Noncompliant";
 };
 
+// Fallback percent -> point mapping (same rules as backend)
+function percentToPointClient(percent: number) {
+  if (percent >= 90) return 1;
+  if (percent >= 75) return 2;
+  if (percent >= 50) return 3;
+  return 0;
+}
+
+function statusToYesNo(status: "Pass" | "Fail" | "N/A") {
+  if (status === "Pass") return "Yes";
+  if (status === "Fail") return "No";
+  return "N/A";
+}
+
+function buildTraceabilityByForm(
+  rows: NonNullable<AuditResultData["traceability"]>
+) {
+  const forms = new Map<string, Map<string, Map<string, typeof rows>>>();
+
+  for (const row of rows) {
+    const form = row.assessmentForm || "Unspecified Assessment Form";
+    const stage = row.assessmentStage || "General";
+    const section = row.assessmentSection || "General";
+
+    if (!forms.has(form)) {
+      forms.set(form, new Map());
+    }
+
+    const stageMap = forms.get(form)!;
+    if (!stageMap.has(stage)) {
+      stageMap.set(stage, new Map());
+    }
+
+    const sectionMap = stageMap.get(stage)!;
+    if (!sectionMap.has(section)) {
+      sectionMap.set(section, []);
+    }
+
+    sectionMap.get(section)!.push(row);
+  }
+
+  return forms;
+}
+
 const AuditResults = ({ data }: AuditResultsProps) => {
   if (!data) return null;
+
+  const traceability = data.traceability || [];
+  const traceabilityByForm = buildTraceabilityByForm(traceability);
+  const orderedForms = [
+    "Web Accessibility Assessment Form - Web Usability",
+    "Web Accessibility Assessment Form - Web Presence",
+  ];
+  const extraForms = Array.from(traceabilityByForm.keys()).filter((form) => !orderedForms.includes(form));
+  const formsToRender = [...orderedForms, ...extraForms].filter((form) => traceabilityByForm.has(form));
 
   return (
     <motion.div
@@ -87,19 +165,37 @@ const AuditResults = ({ data }: AuditResultsProps) => {
               </thead>
               <tbody>
                 {[
-                  { label: "Stage 1 – Emerging", value: data.webPresence.stage1 },
-                  { label: "Stage 2 – Enhanced", value: data.webPresence.stage2 },
-                  { label: "Stage 3 – Transactional", value: data.webPresence.stage3 },
-                  { label: "Stage 4 – Connected", value: data.webPresence.stage4 },
-                ].map((row) => (
-                  <tr key={row.label} className="border-b border-border/50">
-                    <td className="py-2 text-card-foreground">{row.label}</td>
-                    <td className="py-2 text-right font-medium text-card-foreground">{row.value.toFixed(0)}%</td>
-                    <td className={`py-2 text-right font-medium ${getRemarkClass(row.value)}`}>
-                      {getRemarkLabel(row.value)}
-                    </td>
-                  </tr>
-                ))}
+                  { label: "Stage 1 – Emerging", pct: data.webPresence.stage1, point: data.webPresence.stage1Point },
+                  { label: "Stage 2 – Enhanced", pct: data.webPresence.stage2, point: data.webPresence.stage2Point },
+                  { label: "Stage 3 – Transactional", pct: data.webPresence.stage3, point: data.webPresence.stage3Point },
+                  { label: "Stage 4 – Connected", pct: data.webPresence.stage4, point: data.webPresence.stage4Point },
+                ].map((row) => {
+                  // derive legend entry from backend if available, else fallback
+                  const legend = data.webPresence.legend || {
+                    1: { label: 'With Web Presence', color: '#28a745' },
+                    2: { label: 'Under Development', color: '#fd7e14' },
+                    3: { label: 'Offline/Not Accessible', color: '#f8d7da' },
+                    0: { label: 'Without Web Presence', color: '#dc3545' },
+                  };
+
+                  const point = typeof row.point === 'number' ? row.point : percentToPointClient(row.pct);
+                  const remarkLabel = legend[point]?.label ?? getRemarkLabel(row.pct);
+                  const remarkColor = legend[point]?.color ?? '';
+
+                  return (
+                    <tr key={row.label} className="border-b border-border/50">
+                      <td className="py-2 text-card-foreground">{row.label}</td>
+                      <td className="py-2 text-right font-medium text-card-foreground">{row.pct.toFixed(0)}%</td>
+                      <td className={`py-2 text-right font-medium`}>
+                        {point !== undefined ? (
+                          <span style={{ color: remarkColor }}>{remarkLabel}</span>
+                        ) : (
+                          <span className={`${getRemarkClass(row.pct)}`}>{remarkLabel}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 <tr className="font-bold">
                   <td className="py-2 text-card-foreground">Total</td>
                   <td className="py-2 text-right text-card-foreground">{data.webPresence.total.toFixed(0)}%</td>
@@ -154,44 +250,89 @@ const AuditResults = ({ data }: AuditResultsProps) => {
         </div>
       </div>
 
-      {/* Detailed Results */}
+      {/* Transparency Panel */}
       <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <h3 className="font-display text-lg font-bold text-card-foreground mb-4">
-          Detailed Assessment
+          Assessment Forms
         </h3>
-        <div className="space-y-6">
-          {data.categories.map((category) => (
-            <div key={category.name}>
-              <h4 className="font-semibold text-card-foreground text-sm uppercase tracking-wider mb-3">
-                {category.name}
-              </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 text-muted-foreground font-medium">Criterion</th>
-                      <th className="text-center py-2 text-muted-foreground font-medium w-20">Status</th>
-                      <th className="text-left py-2 text-muted-foreground font-medium">Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {category.items.map((item) => (
-                      <tr key={item.id} className="border-b border-border/50">
-                        <td className="py-2 text-card-foreground">{item.criterion}</td>
-                        <td className="py-2 text-center">
-                          <Badge variant="outline" className={`text-xs ${getStatusColor(item.status)}`}>
-                            {item.status}
-                          </Badge>
-                        </td>
-                        <td className="py-2 text-muted-foreground text-xs">{item.remark}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+
+        {data.methodology ? (
+          <div className="grid gap-3 md:grid-cols-4 mb-5">
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Mapped Guidelines</p>
+              <p className="text-lg font-semibold text-card-foreground">{data.methodology.mappedGuidelines}</p>
             </div>
-          ))}
-        </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Evaluated Guidelines</p>
+              <p className="text-lg font-semibold text-card-foreground">{data.methodology.evaluatedGuidelines}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Coverage</p>
+              <p className="text-lg font-semibold text-card-foreground">{data.methodology.coveragePercent}%</p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Pages Crawled</p>
+              <p className="text-lg font-semibold text-card-foreground">{data.methodology.pagesCrawled}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {traceability.length > 0 ? (
+          <div className="space-y-6">
+            {formsToRender.map((formName) => {
+              const stages = traceabilityByForm.get(formName);
+              if (!stages) return null;
+
+              return (
+                <div key={formName} className="space-y-3">
+                  <h4 className="font-semibold text-card-foreground">{formName}</h4>
+                  {Array.from(stages.entries()).map(([stageName, sections]) => (
+                    <div key={`${formName}-${stageName}`} className="space-y-3">
+                      <div className="bg-muted/60 px-3 py-2 text-sm font-semibold text-card-foreground rounded-md">
+                        {stageName}
+                      </div>
+                      {Array.from(sections.entries()).map(([sectionName, rows]) => (
+                        <div key={`${formName}-${stageName}-${sectionName}`} className="rounded-lg border border-border overflow-hidden">
+                          <div className="bg-muted/40 px-3 py-2 text-sm font-semibold text-card-foreground">
+                            {sectionName}
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-border bg-muted/20">
+                                  <th className="text-left py-2 px-3 text-muted-foreground font-medium w-12">No.</th>
+                                  <th className="text-left py-2 px-3 text-muted-foreground font-medium">Assessment Item</th>
+                                  <th className="text-center py-2 px-3 text-muted-foreground font-medium w-20">Yes/No</th>
+                                  <th className="text-left py-2 px-3 text-muted-foreground font-medium">Remarks</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.map((row) => (
+                                  <tr key={`${formName}-${stageName}-${sectionName}-${row.key}`} className="border-b border-border/50 align-top">
+                                    <td className="py-2 px-3 text-card-foreground">{row.rowNo}</td>
+                                    <td className="py-2 px-3 text-card-foreground">{row.guideline}</td>
+                                    <td className="py-2 px-3 text-center">
+                                      <Badge variant="outline" className={`text-xs ${getStatusColor(row.status)}`}>
+                                        {statusToYesNo(row.status)}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2 px-3 text-muted-foreground text-xs">{row.evidence}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No traceability rows were generated.</p>
+        )}
       </div>
     </motion.div>
   );
