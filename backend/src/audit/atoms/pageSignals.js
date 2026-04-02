@@ -42,12 +42,20 @@ async function inspectPageSignals(page, targetOrigin) {
       debugLog('Bot protection detected; skipping signal detection', { url: page.url(), blocked: true });
       return {
         pstFound: false,
+        pstInMasthead: false,
         logoLinksHome: false,
         transparencySealLinked: false,
         breadcrumbEnabled: false,
         hasAbout: false,
+        aboutMatchedText: null,
         hasContact: false,
         govphTopMenu: false,
+        govphIsFirstTopMenu: false,
+        standardFooterHasAgencyLinks: false,
+        sitemapFound: false,
+        sitemapXmlOnly: false,
+        hasMandateMission: false,
+        mandateMissionInAboutSection: false,
         menuSignature: '',
         nonDescriptiveLinkCount: 0,
         citizensCharter: false,
@@ -63,8 +71,10 @@ async function inspectPageSignals(page, targetOrigin) {
   let homeLinkFound = false;
   let logoLinksHome = false;
   let hasAbout = false;
+  let aboutMatchedText = null;
   let hasContact = false;
   let pstFound = false;
+  let pstInMasthead = false;
 
   try {
     const [homeResult, logoResult, aboutResult, contactResult, pstResult] = await Promise.all([
@@ -78,8 +88,55 @@ async function inspectPageSignals(page, targetOrigin) {
     homeLinkFound = homeResult.found;
     logoLinksHome = logoResult.found;
     hasAbout = aboutResult.found;
+    // If nav text didn't match, try a slug/href-based fallback for primary nav links
+    if (!hasAbout) {
+      try {
+        const slugMatch = await page.evaluate(() => {
+          const roots = Array.from(document.querySelectorAll('header, nav, [role="navigation"]')).filter(Boolean);
+          const anchors = roots.length > 0
+            ? roots.flatMap(r => Array.from(r.querySelectorAll('a[href]')))
+            : Array.from(document.querySelectorAll('a[href]'));
+          for (const a of anchors) {
+            const href = a.getAttribute('href') || '';
+            if (/\/(about|profile|agency)(?:[\/\?#]|$)/i.test(href)) {
+              return { href, text: (a.textContent || '').trim() };
+            }
+          }
+          return null;
+        });
+        if (slugMatch) {
+          hasAbout = true;
+          aboutMatchedText = slugMatch.href || slugMatch.text || null;
+        }
+      } catch (e) {
+        // ignore
+      }
+    } else {
+      // If detectNavLinkByIntent matched, capture a best-effort matched text sample
+      try {
+        const sample = await page.evaluate(() => {
+          const candidates = Array.from(document.querySelectorAll('header a, nav a, [role="navigation"] a'));
+          for (const a of candidates) {
+            const txt = (a.textContent || '').trim();
+            if (/^about\s+|profile|history|mandate|background/i.test(txt)) {
+              return txt.slice(0, 120);
+            }
+          }
+          return null;
+        });
+        if (sample) aboutMatchedText = sample;
+      } catch {
+        // ignore
+      }
+    }
     hasContact = contactResult.found;
     pstFound = pstResult.found;
+
+    // Priority-2 placement signal for PST (masthead placement)
+    pstInMasthead = await page.evaluate(() => {
+      const el = document.querySelector('#pst-container, .pst-time, [id*="pst" i], [class*="pst" i], [id*="pht" i], [class*="pht" i]');
+      return Boolean(el && el.closest && el.closest('header, [role="banner"], .masthead'));
+    }).catch(() => false);
 
     debugLog('inspectPageSignals core detectors', {
       url: typeof page.url === 'function' ? page.url() : undefined,
@@ -173,21 +230,140 @@ async function inspectPageSignals(page, targetOrigin) {
   }
 
   let govphTopMenu = false;
+  let govphIsFirstTopMenu = false;
   try {
-    govphTopMenu = Boolean(await page.$('a[href*="gov.ph"]'));
+    const govMeta = await page.evaluate(() => {
+      const topMenuRoot = document.querySelector(
+        'header nav, header .menu, header .navbar, nav[role="navigation"], nav, .top-menu, .navbar, .menu'
+      ) || document.querySelector('header, [role="banner"]');
+
+      if (!topMenuRoot) {
+        const govLink = document.querySelector('a[href*="gov.ph" i]');
+        return {
+          exists: Boolean(govLink),
+          first: false,
+        };
+      }
+
+      const anchors = Array.from(topMenuRoot.querySelectorAll('a[href]'));
+      const govIndex = anchors.findIndex((a) => /gov\.ph/i.test(a.getAttribute('href') || '') || /gov\s*ph/i.test(a.textContent || ''));
+      return {
+        exists: govIndex >= 0,
+        first: govIndex === 0,
+      };
+    });
+
+    govphTopMenu = Boolean(govMeta?.exists);
+    govphIsFirstTopMenu = Boolean(govMeta?.first);
+  } catch {
+    // ignore
+  }
+
+  let standardFooterHasAgencyLinks = false;
+  try {
+    standardFooterHasAgencyLinks = await page.evaluate(() => {
+      const footer = document.querySelector('footer, [role="contentinfo"], .footer');
+      if (!footer) {
+        return false;
+      }
+
+      const links = Array.from(footer.querySelectorAll('a[href]')).map((a) => a.getAttribute('href') || '');
+      const agencyPattern = /gov\.ph|officialgazette\.gov\.ph|dbm\.gov\.ph|csc\.gov\.ph|coa\.gov\.ph|dilg\.gov\.ph|philippines/i;
+      const count = links.filter((href) => agencyPattern.test(href)).length;
+      return count >= 1;
+    });
+  } catch {
+    // ignore
+  }
+
+  let sitemapFound = false;
+  let sitemapXmlOnly = false;
+  try {
+    const sitemapMeta = await page.evaluate(() => {
+      const anchors = Array.from(document.querySelectorAll('a[href]'));
+      const sitemapAnchors = anchors.filter((a) => /site\s*map|sitemap/i.test((a.textContent || '') + ' ' + (a.getAttribute('href') || '')));
+      const hasSitemap = sitemapAnchors.length > 0;
+      if (!hasSitemap) {
+        return { found: false, xmlOnly: false };
+      }
+
+      const allXml = sitemapAnchors.every((a) => /sitemap.*\.xml(\?|$)|\.xml(\?|$)/i.test(a.getAttribute('href') || ''));
+      return {
+        found: true,
+        xmlOnly: allXml,
+      };
+    });
+
+    sitemapFound = Boolean(sitemapMeta?.found);
+    sitemapXmlOnly = Boolean(sitemapMeta?.xmlOnly);
+  } catch {
+    // ignore
+  }
+
+  let hasMandateMission = false;
+  let mandateMissionInAboutSection = false;
+  try {
+    const aboutMeta = await page.evaluate(() => {
+      const bodyText = (document.body?.innerText || '').toLowerCase();
+      const hasMandate = /\bmandate\b|\bfunctions?\b|\bresponsibilit/i.test(bodyText);
+      const hasMissionVision = /\bmission\b|\bvision\b/.test(bodyText);
+      const hasBoth = hasMandate && hasMissionVision;
+
+      const aboutContainer = document.querySelector(
+        'section[id*="about" i], section[class*="about" i], section[id*="profile" i], section[class*="profile" i], article[id*="about" i], article[class*="about" i], .about, .profile'
+      );
+
+      let inAbout = false;
+      if (aboutContainer) {
+        const aboutText = (aboutContainer.textContent || '').toLowerCase();
+        inAbout = /\bmandate\b|\bmission\b|\bvision\b/.test(aboutText);
+      }
+
+      if (!inAbout) {
+        const aboutLink = Array.from(document.querySelectorAll('a[href]')).find((a) => /about|profile|who\s*we\s*are/i.test((a.textContent || '') + ' ' + (a.getAttribute('href') || '')));
+        inAbout = Boolean(aboutLink);
+      }
+
+      const footer = document.querySelector('footer, [role="contentinfo"], .footer');
+      if (footer && inAbout) {
+        const footerText = (footer.textContent || '').toLowerCase();
+        // If terms only appear in footer and nowhere else, do not consider as dedicated section.
+        const outsideFooterText = bodyText.replace(footerText, '');
+        const outsideHasCore = /\bmandate\b|\bmission\b|\bvision\b/.test(outsideFooterText);
+        if (!outsideHasCore) {
+          inAbout = false;
+        }
+      }
+
+      return {
+        hasBoth,
+        inAbout,
+      };
+    });
+
+    hasMandateMission = Boolean(aboutMeta?.hasBoth);
+    mandateMissionInAboutSection = Boolean(aboutMeta?.inAbout);
   } catch {
     // ignore
   }
 
   return {
     pstFound,
+    pstInMasthead,
     // If either detector finds a usable home affordance, treat as present.
     logoLinksHome: logoLinksHome || homeLinkFound,
     transparencySealLinked,
     breadcrumbEnabled,
     hasAbout,
+    aboutMatchedText,
     hasContact,
     govphTopMenu,
+    govphIsFirstTopMenu,
+    standardFooterHasAgencyLinks,
+    sitemapFound,
+    sitemapXmlOnly,
+    hasMandateMission,
+    mandateMissionInAboutSection,
     menuSignature,
     nonDescriptiveLinkCount,
     citizensCharter,

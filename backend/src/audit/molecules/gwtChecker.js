@@ -1,10 +1,19 @@
 function normalizeCheck(check) {
   const allowed = new Set(['Pass', 'Fail', 'N/A']);
+  // Allow callers to signal that the primary presence condition was met
+  // (Priority 1). When `primaryPresent` is true the canonical `status`
+  // MUST be `Pass` even when secondary checks fail; secondary failures
+  // are captured in `remarks` instead.
+  let status = allowed.has(check.status) ? check.status : 'Fail';
+  if (check.primaryPresent === true) {
+    status = 'Pass';
+  }
+
   return {
     key: check.key,
     category: check.category,
     item: check.item,
-    status: allowed.has(check.status) ? check.status : 'Fail',
+    status,
     remarks: check.remarks,
   };
 }
@@ -105,7 +114,6 @@ async function buildPresenceIdentityChecks(page, targetOrigin) {
   // Core signals come from the shared inspector.
   // This ensures the checks here match what runAudit() uses.
   const signals = await inspectPageSignals(page, targetOrigin);
-
   const snapshot = await page.evaluate(() => {
     // broaden transparency-seal detection: check any <img> alt/title that matches transparency.*seal
     const transparencyRegex = /transparency.*seal/i;
@@ -121,9 +129,39 @@ async function buildPresenceIdentityChecks(page, targetOrigin) {
     };
   });
 
-  const pstFound = Boolean(signals.pstFound);
+  // Determine homepage heuristics for PST messaging
+  const urlObj = new URL(page.url());
+  const path = (urlObj.pathname || '/').replace(/\/+$/, '').toLowerCase();
+  const homepagePaths = new Set(['', '/', '/index.html', '/index.php', '/home', '/home-page', '/homepage']);
+  const isHome = homepagePaths.has(path) || path === '';
+
+  // Primary presence detections
+  const pstPresent = Boolean(signals.pstFound) || await page.evaluate(() => !!document.querySelector('#pst-container, .pst-time, [id*="pst" i], [class*="pst" i]'));
+  const pstInMasthead = pstPresent && await page.evaluate(() => {
+    const el = document.querySelector('#pst-container, .pst-time, [id*="pst" i], [class*="pst" i]');
+    return !!(el && el.closest && el.closest('header, [role="banner"], .masthead'));
+  });
+
   const logoLinksHome = Boolean(signals.logoLinksHome);
-  const transparencyLinkPass = Boolean(snapshot.transparencyHref);
+  const transparencyPresent = Boolean(snapshot.transparencyHref) || await page.evaluate(() => {
+    const img = document.querySelector('img[alt*="transparency" i], img[src*="transparency" i], img[title*="transparency" i]');
+    return !!img;
+  });
+
+  const hasGov = Boolean(signals.govphTopMenu);
+  const govIsFirst = Boolean(signals.govphIsFirstTopMenu);
+  const govCheck = normalizeCheck({
+    key: 'presence.govph_link',
+    category: 'Presence & Identity',
+    item: 'GovPH link exists in top menu',
+    status: hasGov ? 'Pass' : 'Fail',
+    primaryPresent: hasGov === true,
+    remarks: hasGov
+      ? (govIsFirst
+        ? 'Pass: GovPH link found and placed as first top-menu element.'
+        : 'Pass: GovPH link found, but it is not the first element in the top menu')
+      : 'No gov.ph link found in top menu.',
+  });
 
   return [
     normalizeCheck({
@@ -131,6 +169,7 @@ async function buildPresenceIdentityChecks(page, targetOrigin) {
       category: 'Navigation',
       item: 'Home link is easy to find at top (masthead)',
       status: logoLinksHome ? 'Pass' : 'Fail',
+      primaryPresent: logoLinksHome === true,
       remarks: logoLinksHome
         ? 'Home affordance detected via unified heuristics.'
         : 'Home affordance not detected via unified heuristics.',
@@ -139,14 +178,25 @@ async function buildPresenceIdentityChecks(page, targetOrigin) {
       key: 'presence.pst',
       category: 'Presence & Identity',
       item: 'PST element present (#pst-container, .pst-time, or equivalent masthead text)',
-      status: pstFound ? 'Pass' : 'Fail',
-      remarks: pstFound ? 'PST detected via unified heuristics.' : 'PST element/text not detected.',
+      // Primary: presence anywhere -> Pass. Secondary: placement in masthead / across pages.
+      status: pstPresent ? 'Pass' : 'Fail',
+      primaryPresent: pstPresent === true,
+      remarks: pstPresent
+        ? (isHome
+          ? (pstInMasthead
+            ? 'Pass: PST present on homepage masthead.'
+            : 'Pass: PST present on home, but GWT requires placement on all pages')
+          : (pstInMasthead
+            ? 'Pass: PST present in masthead.'
+            : 'Pass: PST present but not in masthead (GWT recommends masthead placement)'))
+        : 'PST element/text not detected.',
     }),
     normalizeCheck({
       key: 'presence.logo_home',
       category: 'Presence & Identity',
       item: 'Logo is in masthead and links to homepage',
       status: logoLinksHome ? 'Pass' : 'Fail',
+      primaryPresent: logoLinksHome === true,
       remarks: logoLinksHome
         ? 'Logo/home link detected via unified heuristics.'
         : 'Logo link to homepage not detected in masthead.',
@@ -155,25 +205,23 @@ async function buildPresenceIdentityChecks(page, targetOrigin) {
       key: 'presence.transparency_seal_link',
       category: 'Presence & Identity',
       item: 'Transparency Seal image exists and has a link',
-      status: transparencyLinkPass ? 'Pass' : 'Fail',
-      remarks: transparencyLinkPass
-        ? `Transparency Seal linked to: ${snapshot.transparencyHref}`
-        : 'Transparency Seal image/link not found on homepage.',
+      status: transparencyPresent ? 'Pass' : 'Fail',
+      primaryPresent: transparencyPresent === true,
+      remarks: transparencyPresent
+        ? (snapshot.transparencyHref
+          ? `Pass: Transparency Seal image found. Linked to: ${snapshot.transparencyHref}`
+          : 'Pass: Transparency Seal image found but it is not linked. GWT recommends linking the seal to the Transparency Page.')
+        : 'Transparency Seal image/link not found on page.',
     }),
     normalizeCheck({
       key: 'presence.breadcrumbs',
       category: 'Presence & Identity',
       item: 'Breadcrumb navigation is enabled',
       status: signals.breadcrumbEnabled ? 'Pass' : 'Fail',
+      primaryPresent: signals.breadcrumbEnabled === true,
       remarks: signals.breadcrumbEnabled ? 'Breadcrumb component detected.' : 'Breadcrumb component not detected.',
     }),
-    normalizeCheck({
-      key: 'presence.govph_link',
-      category: 'Presence & Identity',
-      item: 'GovPH link exists in top menu',
-      status: signals.govphTopMenu ? 'Pass' : 'Fail',
-      remarks: signals.govphTopMenu ? 'Top-menu link to gov.ph detected.' : 'No gov.ph link found in top menu.',
-    }),
+    govCheck,
   ];
 }
 
@@ -254,16 +302,19 @@ async function buildContentAccessibilityChecks(page) {
     const hasDescriptiveHeadings = titles.some(h => (h.textContent || '').trim().length > 5);
     
     const metaTags = Array.from(document.querySelectorAll('meta[name], meta[property]'));
-    const hasMeta = metaTags.some(m => (m.getAttribute('content') || '').length > 10);
+    // Consider OpenGraph tags (og:title, og:description) as valid metadata
+    const ogTitle = metaTags.find(m => (m.getAttribute('property') || '').toLowerCase() === 'og:title');
+    const ogDescription = metaTags.find(m => (m.getAttribute('property') || '').toLowerCase() === 'og:description');
+    const hasMeta = metaTags.some(m => (m.getAttribute('content') || '').length > 10) || Boolean(ogTitle) || Boolean(ogDescription);
     
     const anchors = Array.from(document.querySelectorAll('a'));
     const urls = anchors.map(a => (a.getAttribute('href') || '').toLowerCase());
     const hasDescriptiveUrls = urls.some(url => url.length > 0 && !url.includes('?') && url !== '#');
     
     const bodyText = (document.body?.innerText || '').toLowerCase();
-    const hasContent = bodyText.length > 500;
-    
-    const textNodes = Array.from(document.querySelectorAll('p, li, td, dd, .content, [role="main"]'));
+    const hasContent = bodyText.length > 300;
+
+    const textNodes = Array.from(document.querySelectorAll('p, li, td, dd, .content, [role="main"], [class*="col-md-"], .main-content, .container'));
     const hasStructuredText = textNodes.length > 5;
     
     return {
@@ -319,13 +370,16 @@ async function buildNavigationStructureChecks(page, targetOrigin) {
   const results = await page.evaluate(() => {
     // More flexible navigation detection - look for various structures
     const navElements = document.querySelectorAll('nav, [role="navigation"], header, [class*="nav"], [class*="menu"], .navbar, .topnav');
-    const hasNav = navElements.length > 0 || document.querySelectorAll('a').length > 5; // If 5+ links, likely has navigation
+    // Detect containers that have multiple horizontal links even without explicit nav semantics
+    const potentialNavContainers = Array.from(document.querySelectorAll('header, .navbar, .topnav, .menu, [class*="nav"], [class*="menu"]'));
+    const hasHorizontalLinkContainer = potentialNavContainers.some(el => el.querySelectorAll('a').length > 4);
+    const hasNav = navElements.length > 0 || hasHorizontalLinkContainer || document.querySelectorAll('a').length > 5; // If 5+ links, likely has navigation
     
     // Sitemap detection
     const hasSitemap = /sitemap|site\s*map/i.test(document.body?.innerText || '');
     
-    // Search detection - multiple selectors
-    const searchSelectors = ['input[type="search"]', 'input[type="text"][placeholder*="search" i]', '.search', '[role="search"]', '[class*="search"]', 'form[action*="search"]'];
+    // Search detection - multiple selectors including ID-based custom search implementations
+    const searchSelectors = ['input[type="search"]', 'input[type="text"][placeholder*="search" i]', 'input[id*="search" i]', 'button[id*="search" i]', '.search', '[role="search"]', '[class*="search"]', 'form[action*="search"]'];
     let hasSearch = false;
     for (const selector of searchSelectors) {
       if (document.querySelector(selector)) {
@@ -384,7 +438,7 @@ async function buildNavigationStructureChecks(page, targetOrigin) {
 async function buildBrandIdentityChecks(page) {
   const results = await page.evaluate(() => {
     // More flexible logo detection
-    const logoSelectors = ['img[alt*="logo" i]', 'img[src*="logo" i]', '[class*="logo" i] img', '.brand-logo', '.org-logo', 'header img', '[role="banner"] img'];
+    const logoSelectors = ['img[alt*="logo" i]', 'img[src*="logo" i]', '[class*="logo" i] img', '.brand-logo', '.org-logo', 'header img', '[role="banner"] img', '.agency-logo', '.navbar-brand', '.logo-container img'];
     let logos = [];
     for (const selector of logoSelectors) {
       logos = logos.concat(Array.from(document.querySelectorAll(selector)));
@@ -395,7 +449,7 @@ async function buildBrandIdentityChecks(page) {
     const logoAtTop = logos.some(l => {
       try {
         const rect = l.getBoundingClientRect();
-        return rect.top < 200 && rect.top >= -100 && rect.height > 20;
+        return rect.top < 300 && rect.top >= -100 && rect.height > 20;
       } catch {
         return false;
       }
@@ -465,8 +519,27 @@ async function buildCompanyInfoChecks(page) {
     const allLinks = Array.from(document.querySelectorAll('a'));
     
     // About Us: check for text and links
-    const hasAbout = /about\s*us|who\s*we\s*are|company\s*profile|about\s*the|institutional|organisation/.test(bodyText + bodyHtml) || 
+    // Basic about detection
+    let hasAbout = /about\s*us|who\s*we\s*are|company\s*profile|about\s*the|institutional|organisation/.test(bodyText + bodyHtml) || 
                     allLinks.some(a => /about|who\s*we\s*are|company\s*profile|institutional/i.test(a.textContent));
+
+    // Identity-aware detection: if page title contains a city/agency name, look for "About [CityName]"
+    let aboutMatchedText = null;
+    try {
+      const title = document.title || '';
+      const cityMatch = title.match(/([A-Za-z\s]+?)\s+(City|Province|Municipality|Municipal|Town|City\s+Government|Government)/i);
+      const cityName = cityMatch ? cityMatch[1].trim() : null;
+      if (cityName) {
+        const esc = cityName.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+        const aboutCityRe = new RegExp('about\\s+' + esc, 'i');
+        if (aboutCityRe.test(bodyText) || allLinks.some(a => aboutCityRe.test((a.textContent || '') + ' ' + (a.getAttribute('href') || '')))) {
+          hasAbout = true;
+          aboutMatchedText = `About ${cityName}`;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
     
     // Organization structure: look for org chart, structure, or relevant text
     const hasOrgStructure = /organization|structure|hierarchy|division|office|bureau|department|services?(s)?|unit|branch/i.test(bodyText) ||
@@ -487,17 +560,24 @@ async function buildCompanyInfoChecks(page) {
     // Citizens Charter / Service Standards
     const hasCharter = /charter|service\s*standard|customer\s*care|commitments?|guarantee|promise/i.test(bodyText);
     
-    // Mission and Vision  
-    const hasMission = /mission|vision|purpose|goals?|objective/i.test(bodyText);
+    // Mission and Vision - look for headings and structured sections
+    const missionInHeading = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).some(h => /mission|vision/i.test(h.textContent || ''));
+    const missionInClass = Array.from(document.querySelectorAll('[class*="mission" i], [class*="vision" i]')).length > 0;
+    const hasMissionHeading = /\bmission\b|\bvision\b/i.test(bodyText);
+    const hasMissionContent = /mission|vision|purpose|goals?|objective|aspiration|commitment/i.test(bodyText);
+    const hasMission = missionInHeading || missionInClass || hasMissionHeading || hasMissionContent;
     
-    // Mandate and Functions
-    const hasMandate = /mandate|function|responsibilit|authority|power|jurisdiction/i.test(bodyText);
+    // Mandate and Functions - more flexible detection for government agencies
+    const mandateInHeading = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).some(h => /mandate|functions?|responsibilit/i.test(h.textContent || ''));
+    const hasMandateText = /mandate|function|responsibilit|authority|power|jurisdiction|legal.basis|authority|enabling.law/i.test(bodyText);
+    const hasMandate = mandateInHeading || hasMandateText || hasMission; // If mission/vision present, mandate often nearby
     
     // Products or Services
     const hasProducts = /product|service|program|project|offering|initiative|scheme|benefit|application/i.test(bodyText);
     
     return {
       hasAbout,
+      aboutMatchedText,
       hasOrgStructure,
       hasOfficials,
       hasNews,
@@ -509,13 +589,74 @@ async function buildCompanyInfoChecks(page) {
     };
   });
 
+  // Determine if current page is homepage for prominence checks
+  const urlObj = new URL(page.url());
+  const path = (urlObj.pathname || '/').replace(/\/+$/, '').toLowerCase();
+  const homepagePaths = new Set(['', '/', '/index.html', '/index.php', '/home', '/home-page', '/homepage']);
+  const isHome = homepagePaths.has(path) || path === '';
+
+  // Check news prominence on frontpage (secondary requirement)
+  const newsProminent = isHome && await page.evaluate(() => {
+    const heading = Array.from(document.querySelectorAll('h1, h2, h3')).find(h => /news|press|announcement|advisory|release/i.test(h.textContent || ''));
+    if (heading) {
+      try { return heading.getBoundingClientRect().top < window.innerHeight; } catch { return false; }
+    }
+    const section = document.querySelector('.news, .press-release, [id*="news" i], [class*="news" i]');
+    if (section) {
+      try { return section.getBoundingClientRect().top < window.innerHeight; } catch { return false; }
+    }
+    return false;
+  });
+
+  // Detect Citizens' Charter link and whether it is a PDF-only resource
+  const charterLink = await page.evaluate(() => {
+    const anchors = Array.from(document.querySelectorAll('a[href]'));
+    const candidate = anchors.find(a => /citizen'??s?\s*charter|service\s*standard|service\s*standards|citizens\s*charter/i.test(a.textContent || '') || /charter|service-standard|citizen/i.test(a.href));
+    if (!candidate) return null;
+    const href = candidate.getAttribute('href') || '';
+    return { href, isPdf: /\.pdf(\?|$)/i.test(href) };
+  });
+  // Build citizens' charter normalized check synchronously
+  let charterCheck;
+  if (!charterLink) {
+    charterCheck = normalizeCheck({
+      key: 'presence.citizens_charter',
+      category: 'Presence & Identity',
+      item: "Citizens Charter is documented",
+      status: 'Fail',
+      remarks: 'No Citizens Charter resource found.',
+    });
+  } else if (charterLink.isPdf) {
+    charterCheck = normalizeCheck({
+      key: 'presence.citizens_charter',
+      category: 'Presence & Identity',
+      item: "Citizens Charter is documented",
+      status: 'Fail',
+      primaryPresent: false,
+      remarks: "Fail: Citizen's Charter found but is not readable by screen readers (Scanned PDF)",
+    });
+  } else {
+    charterCheck = normalizeCheck({
+      key: 'presence.citizens_charter',
+      category: 'Presence & Identity',
+      item: "Citizens Charter is documented",
+      status: 'Pass',
+      primaryPresent: true,
+      remarks: 'Pass: Citizens Charter accessible (HTML/text resource detected).',
+    });
+  }
+
   return [
     normalizeCheck({
       key: 'company_info.about_link',
       category: 'Company Information',
       item: 'About Us is easy to find',
       status: results.hasAbout ? 'Pass' : 'Fail',
-      remarks: results.hasAbout ? 'About/Company information detected.' : 'No About Us section found.',
+      remarks: results.hasAbout
+        ? (results.aboutMatchedText
+          ? `Pass: About section detected via fuzzy match ('${results.aboutMatchedText}')`
+          : 'About/Company information detected.')
+        : 'No About Us section found.',
     }),
     normalizeCheck({
       key: 'presence.organization_structure',
@@ -535,8 +676,14 @@ async function buildCompanyInfoChecks(page) {
       key: 'content.news_releases',
       category: 'Content',
       item: 'News/press releases/announcements are present',
+      // Primary: news exists anywhere -> Pass. Secondary: on homepage, must be prominent.
       status: results.hasNews ? 'Pass' : 'Fail',
-      remarks: results.hasNews ? 'News/press/blog section detected.' : 'No news or announcements section.',
+      primaryPresent: results.hasNews === true,
+      remarks: results.hasNews
+        ? (isHome && !newsProminent
+          ? 'Pass: News found, but not prominently placed on frontpage.'
+          : 'Pass: News/press/blog section detected.')
+        : 'No news or announcements section.',
     }),
     normalizeCheck({
       key: 'presence.transparency_seal',
@@ -545,13 +692,7 @@ async function buildCompanyInfoChecks(page) {
       status: results.hasTransparency ? 'Pass' : 'Fail',
       remarks: results.hasTransparency ? 'Transparency/disclosure information found.' : 'No transparency documentation.',
     }),
-    normalizeCheck({
-      key: 'presence.citizens_charter',
-      category: 'Presence & Identity',
-      item: 'Citizens Charter is documented',
-      status: results.hasCharter ? 'Pass' : 'Fail',
-      remarks: results.hasCharter ? 'Service standards/charter information detected.' : 'No citizens charter document.',
-    }),
+    charterCheck,
     normalizeCheck({
       key: 'presence.mission_vision',
       category: 'Presence & Identity',
@@ -1101,6 +1242,7 @@ async function buildSecurityChecks(page, pageUrl) {
 
 // Advanced Participation & Community Tools
 async function buildParticipationToolsChecks(page) {
+  const signals = await inspectPageSignals(page, new URL(page.url()).origin);
   const results = await page.evaluate(() => {
     const bodyText = (document.body?.innerText || '').toLowerCase();
     const bodyHtml = document.body?.innerHTML || '';
@@ -1279,15 +1421,34 @@ async function buildParticipationToolsChecks(page) {
       key: 'presence.govph_footer_link',
       category: 'Presence & Identity',
       item: 'Links to other agencies (GOV.PH and Standard Footer)',
-      status: results.hasSocialIntegration || results.hasFeedbackCollection ? 'Pass' : 'Fail',
-      remarks: 'External agency links or integration detected.',
+      // Priority 1: GovPH existence in top menu.
+      // Priority 2: GovPH should be first + standard footer should contain agency links.
+      status: signals.govphTopMenu ? 'Pass' : 'Fail',
+      primaryPresent: signals.govphTopMenu === true,
+      remarks: signals.govphTopMenu
+        ? [
+          !signals.govphIsFirstTopMenu
+            ? 'Pass: GovPH link found, but it is not the first element in the top menu'
+            : 'Pass: GovPH link found as first top-menu element.',
+          signals.standardFooterHasAgencyLinks
+            ? 'Standard footer links to government sites detected.'
+            : 'Standard footer agency links were not detected.',
+        ].join(' ')
+        : 'GovPH link not detected in top menu.',
     }),
     normalizeCheck({
       key: 'presence.sitemap',
       category: 'Presence & Identity',
       item: 'Site Map is present',
-      status: results.hasConfirmation ? 'Pass' : 'Fail',
-      remarks: 'Sitemap or navigation structure indicator detected.',
+      // Priority 1: sitemap exists.
+      // Priority 2: user-facing hierarchical sitemap preferred over XML-only.
+      status: signals.sitemapFound ? 'Pass' : 'Fail',
+      primaryPresent: signals.sitemapFound === true,
+      remarks: signals.sitemapFound
+        ? (signals.sitemapXmlOnly
+          ? 'Pass: XML sitemap detected; consider adding a hierarchical list for users'
+          : 'Pass: Sitemap detected with user-facing structure.')
+        : 'No sitemap detected.',
     }),
     normalizeCheck({
       key: 'presence.logo_masthead',
@@ -1300,8 +1461,14 @@ async function buildParticipationToolsChecks(page) {
       key: 'presence.about_us',
       category: 'Presence & Identity',
       item: 'About Us section is present',
-      status: results.hasFeedbackCollection ? 'Pass' : 'Fail',
-      remarks: 'About section detected.',
+      // Item 5 hierarchical rule: pass when core agency information exists.
+      status: signals.hasMandateMission ? 'Pass' : 'Fail',
+      primaryPresent: signals.hasMandateMission === true,
+      remarks: signals.hasMandateMission
+        ? (signals.mandateMissionInAboutSection
+          ? 'Pass: Mandate/Mission/Vision found in a dedicated About/Profile section.'
+          : 'Pass: Mission/Vision found, but accessibility could be improved by placing them in a dedicated Profile section')
+        : 'Mandate and Mission/Vision were not detected.',
     }),
   ];
 }
@@ -1335,7 +1502,7 @@ async function buildMissingNavigationChecks(page, targetOrigin) {
     };
     
     // Logo home link - look for images with logo in alt/src that link home, or first header link
-    const mastheadAnchors = Array.from(document.querySelectorAll('header a, nav a, [role="banner"] a'));
+    const mastheadAnchors = Array.from(document.querySelectorAll('header a, nav a, [role="banner"] a, .navbar a, .logo-container a, .navbar-brand a, .agency-logo a'));
     let logoLinksHome = false;
     
     // First try to find logo link explicitly
@@ -1383,18 +1550,24 @@ async function buildMissingNavigationChecks(page, targetOrigin) {
     const hasNavigation = document.querySelector('nav, [role="navigation"]') !== null;
     const siteAccessible = hasSkipLink || hasNavigation;
     
-    // Structure understanding - look for breadcrumbs or clear hierarchy
+    // Structure understanding - prefer explicit heading hierarchy (H1 -> H2 -> H3)
     const breadcrumbs = document.querySelector('nav[aria-label*="breadcrumb"], .breadcrumb');
+    const hasHeadingHierarchy = Boolean(document.querySelector('h1') && document.querySelector('h2') && document.querySelector('h3'));
     const hasHeadings = document.querySelectorAll('h1, h2, h3').length > 3;
-    const structureClear = Boolean(breadcrumbs) || hasHeadings;
-    
-    // Meta/tags clarity
+    const structureClear = Boolean(breadcrumbs) || hasHeadingHierarchy || hasHeadings;
+
+    // Meta/tags clarity - include OpenGraph tags as valid metadata
     const metaTags = Array.from(document.querySelectorAll('meta[name], meta[property]'));
-    const hasMetaTags = metaTags.length > 3;
-    
-    // About/Contact/Home links grouped
-    const aboutLink = allLinks.find(a => /about|who we are/i.test(a.textContent));
-    const contactLink = allLinks.find(a => /contact|contact us/i.test(a.textContent));
+    const ogTitle = metaTags.find(m => (m.getAttribute('property') || '').toLowerCase() === 'og:title');
+    const ogDescription = metaTags.find(m => (m.getAttribute('property') || '').toLowerCase() === 'og:description');
+    const hasMetaTags = metaTags.some(m => (m.getAttribute('content') || '').length > 10) || Boolean(ogTitle) || Boolean(ogDescription);
+    const metaCount = metaTags.filter(m => (m.getAttribute('content') || '').length > 0).length;
+
+    // About/Contact/Home links grouped - use intent-based regex (covers Profile, Mandate, Reach Us, etc.)
+    const aboutPattern = /about|profile|mandate|who\s*we\s*are|our\s*agency|overview/i;
+    const contactPattern = /contact|get\s*in\s*touch|reach\s*us|directory|inquiries|help|support|reach[-_ ]?us|inquiry/i;
+    const aboutLink = allLinks.find(a => aboutPattern.test((a.textContent || '') + ' ' + (a.getAttribute('href') || '')));
+    const contactLink = allLinks.find(a => contactPattern.test((a.textContent || '') + ' ' + (a.getAttribute('href') || '')));
     const homeFound = hasHomeLink;
     const allThreeFound = Boolean(aboutLink && contactLink && homeFound);
     
@@ -1404,6 +1577,7 @@ async function buildMissingNavigationChecks(page, targetOrigin) {
       siteAccessible,
       structureClear,
       hasMetaTags,
+      metaCount,
       allThreeFound,
     };
   }, targetOrigin);
@@ -1449,7 +1623,7 @@ async function buildMissingNavigationChecks(page, targetOrigin) {
       category: 'Navigation',
       item: 'The tags meta descriptions headers and URLs are clear and descriptive',
       status: results.hasMetaTags ? 'Pass' : 'Fail',
-      remarks: results.hasMetaTags ? `Found ${results.hasMetaTags} meta tags.` : 'Insufficient meta tag information.',
+      remarks: results.hasMetaTags ? `Found ${results.metaCount} meta tags (including OpenGraph).` : 'Insufficient meta tag information.',
     }),
     normalizeCheck({
       key: 'navigation.logo_homepage_link',

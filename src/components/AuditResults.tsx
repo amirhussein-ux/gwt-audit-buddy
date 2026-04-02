@@ -180,27 +180,95 @@ const AuditResults = ({ data }: AuditResultsProps) => {
 
                   const point = typeof row.point === 'number' ? row.point : percentToPointClient(row.pct);
                   const remarkLabel = legend[point]?.label ?? getRemarkLabel(row.pct);
-                  const remarkColor = legend[point]?.color ?? '';
+                  const bgColor = legend[point]?.color ?? '';
+
+                  // compute contrasting text color for readability
+                  function hexToRgb(hex: string) {
+                    const clean = hex.replace('#', '');
+                    const bigint = parseInt(clean, 16);
+                    return {
+                      r: (bigint >> 16) & 255,
+                      g: (bigint >> 8) & 255,
+                      b: bigint & 255,
+                    };
+                  }
+
+                  function getContrastText(hex: string) {
+                    try {
+                      const { r, g, b } = hexToRgb(hex);
+                      // relative luminance
+                      const [rs, gs, bs] = [r, g, b].map((c) => {
+                        const s = c / 255;
+                        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+                      });
+                      const luminance = 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+                      return luminance > 0.6 ? '#000000' : '#FFFFFF';
+                    } catch (e) {
+                      return '#000000';
+                    }
+                  }
+
+                  const textColor = bgColor ? getContrastText(bgColor) : undefined;
 
                   return (
                     <tr key={row.label} className="border-b border-border/50">
                       <td className="py-2 text-card-foreground">{row.label}</td>
-                      <td className="py-2 text-right font-medium text-card-foreground">{row.pct.toFixed(0)}%</td>
+                      <td className="py-2 text-right font-medium text-card-foreground">
+                        <span
+                          className="font-semibold mr-2 inline-flex items-center justify-center px-2 py-0.5 rounded-md"
+                          style={{ backgroundColor: bgColor, color: textColor }}
+                        >
+                          {point}
+                        </span>
+                        <span className="text-card-foreground">{row.pct.toFixed(0)}%</span>
+                      </td>
                       <td className={`py-2 text-right font-medium`}>
-                        {point !== undefined ? (
-                          <span style={{ color: remarkColor }}>{remarkLabel}</span>
-                        ) : (
-                          <span className={`${getRemarkClass(row.pct)}`}>{remarkLabel}</span>
-                        )}
+                        <span
+                          className="inline-flex items-center justify-center px-2 py-0.5 rounded-md"
+                          style={{ backgroundColor: bgColor, color: textColor }}
+                        >
+                          {remarkLabel}
+                        </span>
                       </td>
                     </tr>
                   );
                 })}
                 <tr className="font-bold">
                   <td className="py-2 text-card-foreground">Total</td>
-                  <td className="py-2 text-right text-card-foreground">{data.webPresence.total.toFixed(0)}%</td>
-                  <td className={`py-2 text-right ${getRemarkClass(data.webPresence.total)}`}>
-                    {getRemarkLabel(data.webPresence.total)}
+                  <td className="py-2 text-right text-card-foreground">
+                    {(() => {
+                      const legend = data.webPresence.legend || {
+                        1: { label: 'With Web Presence', color: '#28a745' },
+                        2: { label: 'Under Development', color: '#fd7e14' },
+                        3: { label: 'Offline/Not Accessible', color: '#f8d7da' },
+                        0: { label: 'Without Web Presence', color: '#dc3545' },
+                      };
+                      const totalPct = data.webPresence.total || 0;
+                      const totalPoint = percentToPointClient(totalPct);
+                      const bgColor = legend[totalPoint]?.color ?? '';
+                      const textColor = bgColor ? (function(hex: string){ try { const c = hex.replace('#',''); const v = parseInt(c,16); const r=(v>>16)&255; const g=(v>>8)&255; const b=v&255; const [rs,gs,bs]=[r,g,b].map(c=>{const s=c/255; return s<=0.03928 ? s/12.92 : Math.pow((s+0.055)/1.055,2.4)}); const luminance=0.2126*rs+0.7152*gs+0.0722*bs; return luminance>0.6 ? '#000000':'#FFFFFF' } catch(e){return '#000000'} })(bgColor) : undefined;
+                      return (
+                        <>
+                          <span className="font-semibold mr-2 inline-flex items-center justify-center px-2 py-0.5 rounded-md" style={{ backgroundColor: bgColor, color: textColor }}>{totalPoint}</span>
+                          <span className="text-card-foreground">{totalPct.toFixed(0)}%</span>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td className={`py-2 text-right`}>
+                    {(() => {
+                      const legend = data.webPresence.legend || {
+                        1: { label: 'With Web Presence', color: '#28a745' },
+                        2: { label: 'Under Development', color: '#fd7e14' },
+                        3: { label: 'Offline/Not Accessible', color: '#f8d7da' },
+                        0: { label: 'Without Web Presence', color: '#dc3545' },
+                      };
+                      const totalPct = data.webPresence.total || 0;
+                      const totalPoint = percentToPointClient(totalPct);
+                      const bgColor = legend[totalPoint]?.color ?? '';
+                      const textColor = bgColor ? (function(hex: string){ try { const c = hex.replace('#',''); const v = parseInt(c,16); const r=(v>>16)&255; const g=(v>>8)&255; const b=v&255; const [rs,gs,bs]=[r,g,b].map(c=>{const s=c/255; return s<=0.03928 ? s/12.92 : Math.pow((s+0.055)/1.055,2.4)}); const luminance=0.2126*rs+0.7152*gs+0.0722*bs; return luminance>0.6 ? '#000000':'#FFFFFF' } catch(e){return '#000000'} })(bgColor) : undefined;
+                      return <span style={{ backgroundColor: bgColor, color: textColor }} className="inline-flex items-center justify-center px-2 py-0.5 rounded-md">{legend[totalPoint]?.label ?? getRemarkLabel(totalPct)}</span>;
+                    })()}
                   </td>
                 </tr>
               </tbody>
