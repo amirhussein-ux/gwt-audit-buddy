@@ -154,7 +154,11 @@ router.post('/', authenticate, async (req, res) => {
         console.error('[Background Audit] Stack trace:', error.stack);
       }
       // Update audit log status to failed
-      AuditLog.findByIdAndUpdate(savedAuditLog._id, { status: 'failed', error: error.message }).catch(
+      AuditLog.findByIdAndUpdate(
+        savedAuditLog._id, 
+        { status: 'failed', error: error.message },
+        { returnDocument: 'after' }
+      ).catch(
         (err) => console.error('[Cleanup] Failed to update status:', err)
       );
     });
@@ -253,10 +257,13 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
         title: p.title || '',
       })),
       auditDurationMs,
-      xlsxBuffer: xlsxBuffer.toString('base64'),
-      pdfBuffer: pdfBuffer.toString('base64'),
       completedAt: new Date(),
     };
+
+    console.log('[Background] Audit results prepared for storage:', {
+      checksCount: updateData.auditResults?.checks?.length,
+      pagesCount: updateData.crawledPages?.length,
+    });
 
     const updatedAuditLog = await AuditLog.findByIdAndUpdate(
       auditLogId,
@@ -267,7 +274,8 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
     console.log('[Background] Audit log updated successfully', {
       auditLogId: updatedAuditLog._id,
       checksStored: updatedAuditLog.auditResults?.checks?.length,
-      pagesStored: updatedAuditLog.crawledPages?.length
+      pagesStored: updatedAuditLog.crawledPages?.length,
+      status: updatedAuditLog.status,
     });
 
     // Save compliance score if agency exists
@@ -357,6 +365,7 @@ router.get('/:id', authenticate, async (req, res) => {
       checkCount: auditLog.auditResults?.checks?.length || 0,
       hasUiReport: !!auditLog.uiReport,
       hasComplianceInAudit: !!auditLog.compliance,
+      status: auditLog.status,
     });
 
     // Get associated compliance score
@@ -394,6 +403,80 @@ router.get('/:id', authenticate, async (req, res) => {
     return res.status(500).json({
       error: 'Failed to retrieve audit details',
     });
+  }
+});
+
+/**
+ * GET /audit/:id/download/excel
+ * Download audit report as Excel file (regenerated on-demand)
+ */
+router.get('/:id/download/excel', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const auditLog = await AuditLog.findById(id).lean();
+
+    if (!auditLog) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+
+    if (!auditLog.auditResults) {
+      return res.status(400).json({ error: 'Audit results not available' });
+    }
+
+    // Regenerate Excel report on-demand
+    const excelBuffer = await generateAuditReport(auditLog.auditResults);
+    
+    // Set response headers for file download
+    const hostname = new URL(auditLog.auditUrl).hostname;
+    const date = new Date(auditLog.createdAt).toISOString().split('T')[0];
+    const filename = `${hostname}_audit_${date}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', excelBuffer.length);
+    
+    console.log('[Audit Download] Excel downloaded:', { auditLogId: id, filename, size: excelBuffer.length });
+    return res.send(excelBuffer);
+  } catch (error) {
+    console.error('[Audit Download Excel] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to generate Excel file' });
+  }
+});
+
+/**
+ * GET /audit/:id/download/pdf
+ * Download audit report as PDF file (regenerated on-demand)
+ */
+router.get('/:id/download/pdf', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const auditLog = await AuditLog.findById(id).lean();
+
+    if (!auditLog) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+
+    if (!auditLog.auditResults) {
+      return res.status(400).json({ error: 'Audit results not available' });
+    }
+
+    // Regenerate PDF report on-demand
+    const pdfBuffer = await generateAuditReportPdf(auditLog.auditResults);
+    
+    // Set response headers for file download
+    const hostname = new URL(auditLog.auditUrl).hostname;
+    const date = new Date(auditLog.createdAt).toISOString().split('T')[0];
+    const filename = `${hostname}_audit_${date}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    console.log('[Audit Download] PDF downloaded:', { auditLogId: id, filename, size: pdfBuffer.length });
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('[Audit Download PDF] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to generate PDF file' });
   }
 });
 

@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CheckItem {
   key: string;
@@ -8,6 +9,7 @@ interface CheckItem {
 }
 
 interface AuditData {
+  _id?: string;
   auditUrl: string;
   createdAt: string;
   // Flat structure (new backend format)
@@ -71,6 +73,8 @@ export function AuditSummaryReport({
   onDownloadExcel,
   onDownloadPdf 
 }: AuditSummaryReportProps) {
+  const { token } = useAuth();
+  
   // Backend now returns flat structure: checks at top level, not nested under auditResults
   const checks = audit.checks ?? audit.auditResults?.checks ?? [];
   const hasPass = (...keys: string[]) =>
@@ -174,7 +178,62 @@ export function AuditSummaryReport({
   const pagesAnalyzed =    uiReport?.methodology?.pagesCrawled ??    audit.crawledPages?.length ??
     audit.performance?.pagesCrawled ??
     0;
+  // Download handlers - use backend endpoints instead of base64
+  const handleDownloadExcel = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      const response = await fetch(`${API_BASE}/audit/${audit._id}/download/excel`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
 
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const hostname = new URL(audit.auditUrl).hostname;
+      const date = new Date(audit.createdAt).toISOString().split('T')[0];
+      link.download = `${hostname}_audit_${date}.xlsx`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('[Download Excel] Error:', error);
+      alert('Failed to download Excel file. Please try again.');
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      const response = await fetch(`${API_BASE}/audit/${audit._id}/download/pdf`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const hostname = new URL(audit.auditUrl).hostname;
+      const date = new Date(audit.createdAt).toISOString().split('T')[0];
+      link.download = `${hostname}_audit_${date}.pdf`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('[Download PDF] Error:', error);
+      alert('Failed to download PDF file. Please try again.');
+    }
+  };
   return (
     <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50">
       <CardHeader>
@@ -187,14 +246,14 @@ export function AuditSummaryReport({
             <Button 
               variant="secondary" 
               size="sm"
-              onClick={onDownloadExcel}
+              onClick={handleDownloadExcel}
             >
               📊 Download Excel
             </Button>
             <Button 
               variant="secondary" 
               size="sm"
-              onClick={onDownloadPdf}
+              onClick={handleDownloadPdf}
             >
               📄 Download PDF
             </Button>

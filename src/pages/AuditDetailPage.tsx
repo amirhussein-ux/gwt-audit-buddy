@@ -248,8 +248,6 @@ export default function AuditDetailPage() {
         audit={audit}
         compliance={compliance || undefined}
         uiReport={data?.uiReport || undefined}
-        onDownloadExcel={() => alert('Download Excel functionality coming soon')}
-        onDownloadPdf={() => alert('Download PDF functionality coming soon')}
       />
 
       {/* Tabs for different sections */}
@@ -313,7 +311,7 @@ export default function AuditDetailPage() {
                       { label: '2. About Us', value: hasPass('navigation.about_link'), remark: hasPass('navigation.about_link') ? 'About Us found' : 'About Us missing' },
                       { label: '3. Organization Structure', value: hasPass('presence.organization_structure'), remark: hasPass('presence.organization_structure') ? 'Organization chart available' : 'Organization structure not found' },
                       { label: '4. Key Officials', value: hasPass('presence.key_officials'), remark: hasPass('presence.key_officials') ? 'Officials information present' : 'Officials information not found' },
-                      { label: '5. Contact Details', value: hasPass('navigation.contact_link'), remark: hasPass('navigation.contact_link') ? 'Contact info provided' : 'Contact details not found' },
+                      { label: '5. Contact Details', value: hasChecksPassing('phone') || hasChecksPassing('email') || hasChecksPassing('address', 'location'), remark: (hasChecksPassing('phone') || hasChecksPassing('email') || hasChecksPassing('address', 'location')) ? 'Contact info provided' : 'Contact details not found' },
                       { label: '   • Phone/Fax', value: hasChecksPassing('phone'), remark: hasChecksPassing('phone') ? 'Phone contact available' : 'Phone contact not found' },
                       { label: '   • Email', value: hasChecksPassing('email'), remark: hasChecksPassing('email') ? 'Email contact available' : 'Email contact not found' },
                       { label: '   • Address and Location Map', value: hasChecksPassing('address', 'location'), remark: hasChecksPassing('address', 'location') ? 'Location info provided' : 'Address/location not found' },
@@ -335,7 +333,7 @@ export default function AuditDetailPage() {
                     </tr>
                     {[
                       { label: '1. Citizens\' Charter', value: audit.citizensCharter?.found || hasChecksPassing('charter'), remark: (audit.citizensCharter?.found || hasChecksPassing('charter')) ? 'Citizens Charter found' : 'Citizens Charter not found' },
-                      { label: '2. Transparency Seal', value: hasPass('presence.transparency_seal_link'), remark: hasPass('presence.transparency_seal_link') ? 'Transparency Seal found' : 'Transparency Seal missing' },
+                      { label: '2. Transparency Seal', value: hasPass('presence.mission_vision') || hasChecksPassing('objective') || hasPass('presence.mandate_functions') || hasChecksPassing('service'), remark: (hasPass('presence.mission_vision') || hasChecksPassing('objective') || hasPass('presence.mandate_functions') || hasChecksPassing('service')) ? 'Transparency Seal found' : 'Transparency Seal missing' },
                       { label: '   • Mission and Vision', value: hasPass('presence.mission_vision'), remark: hasPass('presence.mission_vision') ? 'Mission/Vision statement present' : 'Mission/Vision not found' },
                       { label: '   • Organizational Aims and Objectives', value: hasChecksPassing('objective'), remark: hasChecksPassing('objective') ? 'Organizational objectives documented' : 'Objectives not documented' },
                       { label: '   • Mandate and Functions', value: hasPass('presence.mandate_functions'), remark: hasPass('presence.mandate_functions') ? 'Mandate clearly stated' : 'Mandate not stated' },
@@ -426,7 +424,7 @@ export default function AuditDetailPage() {
                     </tr>
                     {[
                       { label: '1. Availability of forms', value: hasChecksPassing('form'), remark: hasChecksPassing('form') ? 'Forms available' : 'Forms not available' },
-                      { label: '2. Availability of useful documents', value: hasChecksPassing('document'), remark: hasChecksPassing('document') ? 'Documents accessible' : 'Documents not accessible' },
+                      { label: '2. Availability of useful documents', value: hasChecksPassing('download', 'document', 'form'), remark: hasChecksPassing('download', 'document', 'form') ? 'Documents accessible' : 'Documents not accessible' },
                       { label: '3. Availability of downloadable forms', value: hasChecksPassing('download', 'form'), remark: hasChecksPassing('download', 'form') ? 'Download capability present' : 'Download capability missing' },
                       { label: '4. Existence of a one-stop shop agency portal', value: hasChecksPassing('portal', 'integration'), remark: hasChecksPassing('portal', 'integration') ? 'Portal integration available' : 'Portal integration not available' },
                     ].map((item, idx) => (
@@ -748,9 +746,9 @@ export default function AuditDetailPage() {
                     </tr>
                     {[
                       { label: '1. Website load-time is reasonable', value: (audit.performance?.loadTimeMs || 0) <= 10000, remark: `${((audit.performance?.loadTimeMs || 0) / 1000).toFixed(2)}s` },
-                      { label: '2. Site logo is easy to find and links to the home page', value: true, remark: 'Logo navigation verified' },
-                      { label: '3. The About Us, Contact Us and Home links are easy to find', value: audit.masthead?.aboutUs && audit.masthead?.contactUs, remark: 'Navigation verified' },
-                      { label: '4. User easily gets back to homepage or a relevant start point.', value: true, remark: 'Homepage navigation verified' },
+                      { label: '2. Site logo is easy to find and links to the home page', value: hasPass('identity.logo_featured', 'logo_link'), remark: hasPass('identity.logo_featured', 'logo_link') ? 'Logo navigation verified' : 'Logo navigation failed' },
+                      { label: '3. The About Us, Contact Us and Home links are easy to find', value: hasChecksPassing('about', 'contact'), remark: hasChecksPassing('about', 'contact') ? 'Navigation verified' : 'Navigation issues found' },
+                      { label: '4. User easily gets back to homepage or a relevant start point.', value: hasPass('navigation.home_link') || hasPass('navigation.back_to_homepage'), remark: (hasPass('navigation.home_link') || hasPass('navigation.back_to_homepage')) ? 'Homepage navigation verified' : 'Homepage navigation failed' },
                     ].map((item, idx) => (
                       <tr key={`acc-a${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
@@ -768,16 +766,16 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">B. Content and Text</td>
                     </tr>
                     {[
-                      { label: '1. Title tags, meta descriptions, headers and URLs are clear and descriptive.', value: true, remark: 'Semantic HTML verified' },
-                      { label: '2. Text on the page is easy to read.', value: true, remark: 'Typography verified' },
-                      { label: '3. Content available is appropriate and sufficiently relevant, and detailed to meet user goals.', value: true, remark: 'Content quality verified' },
-                      { label: '4. Terms, language and tone used are consistent (e.g. the same term is used throughout).', value: true, remark: 'Terminology consistency verified' },
-                      { label: '5. Language, terminology and tone used is appropriate and readily understood by the target audience.', value: true, remark: 'Audience appropriateness verified' },
-                      { label: '6. Images have appropriate ALT tags.', value: (audit.checks ?? audit.auditResults?.checks)?.some((c: CheckItem) => c.key?.includes('alt-text')), remark: 'ALT tag coverage assessed' },
-                      { label: '7. Text and content is legible and scanable, with good typography and visual contrast.', value: (audit.checks ?? audit.auditResults?.checks)?.some((c: CheckItem) => c.key?.includes('contrast')), remark: 'Contrast verified' },
-                      { label: '8. Font size/spacing is easy to read.', value: true, remark: 'Typography verified' },
-                      { label: '9. Flash & add-ons are used sparingly.', value: true, remark: 'Content accessibility verified' },
-                      { label: '10. Links are clear, descriptive and well labelled.', value: true, remark: 'Link text verified' },
+                      { label: '1. Title tags, meta descriptions, headers and URLs are clear and descriptive.', value: hasChecksPassing('meta', 'tag', 'header'), remark: hasChecksPassing('meta', 'tag', 'header') ? 'Semantic HTML verified' : 'Semantic HTML needs improvement' },
+                      { label: '2. Text on the page is easy to read.', value: hasPass('content.text_readability'), remark: hasPass('content.text_readability') ? 'Typography verified' : 'Typography needs improvement' },
+                      { label: '3. Content available is appropriate and sufficiently relevant, and detailed to meet user goals.', value: hasPass('content.relevance_detail'), remark: hasPass('content.relevance_detail') ? 'Content quality verified' : 'Content quality needs improvement' },
+                      { label: '4. Terms, language and tone used are consistent (e.g. the same term is used throughout).', value: hasPass('content.terminology_consistency'), remark: hasPass('content.terminology_consistency') ? 'Terminology consistency verified' : 'Terminology inconsistent' },
+                      { label: '5. Language, terminology and tone used is appropriate and readily understood by the target audience.', value: hasPass('content.language_tone_appropriate'), remark: hasPass('content.language_tone_appropriate') ? 'Audience appropriateness verified' : 'Language not appropriate for audience' },
+                      { label: '6. Images have appropriate ALT tags.', value: hasPass('a11y.image_alt'), remark: hasPass('a11y.image_alt') ? 'ALT tag coverage verified' : 'Missing ALT tags on images' },
+                      { label: '7. Text and content is legible and scanable, with good typography and visual contrast.', value: hasPass('a11y.color_contrast', 'content.legibility_contrast'), remark: hasPass('a11y.color_contrast', 'content.legibility_contrast') ? 'Contrast verified' : 'Contrast issues found' },
+                      { label: '8. Font size/spacing is easy to read.', value: hasPass('content.font_spacing'), remark: hasPass('content.font_spacing') ? 'Typography verified' : 'Font/spacing needs improvement' },
+                      { label: '9. Flash & add-ons are used sparingly.', value: hasPass('content.flash_addons'), remark: hasPass('content.flash_addons') ? 'Content accessibility verified' : 'Too many Flash/add-ons used' },
+                      { label: '10. Links are clear, descriptive and well labelled.', value: hasPass('a11y.descriptive_links'), remark: hasPass('a11y.descriptive_links') ? 'Link text verified' : 'Links not descriptive enough' },
                     ].map((item, idx) => (
                       <tr key={`acc-b${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
@@ -795,9 +793,9 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">C. Error Handling</td>
                     </tr>
                     {[
-                      { label: '1. There is a custom 404 page for broken links.', value: true, remark: '404 page verified' },
-                      { label: '2. Users can easily recover (i.e. not have to start again) from errors.', value: true, remark: 'Error recovery verified' },
-                      { label: '3. Error messages are concise, written in easy to understand language and describe what occurred and what action is necessary.', value: true, remark: 'Error messaging verified' },
+                      { label: '1. There is a custom 404 page for broken links.', value: hasPass('error.custom_404'), remark: hasPass('error.custom_404') ? '404 page verified' : '404 page not custom' },
+                      { label: '2. Users can easily recover (i.e. not have to start again) from errors.', value: hasPass('error.recovery'), remark: hasPass('error.recovery') ? 'Error recovery verified' : 'Error recovery not clear' },
+                      { label: '3. Error messages are concise, written in easy to understand language and describe what occurred and what action is necessary.', value: hasPass('error.messages'), remark: hasPass('error.messages') ? 'Error messaging verified' : 'Error messages unclear' },
                     ].map((item, idx) => (
                       <tr key={`acc-c${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
@@ -820,9 +818,9 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">A. Company / site logo is prominently placed</td>
                     </tr>
                     {[
-                      { label: '1. Site logo is easy to find (i.e., located on top of the page)', value: true, remark: 'Logo positioning verified' },
-                      { label: '2. Site logo links to the home page', value: true, remark: 'Logo link verified' },
-                      { label: '3. Follow recommended logo size as prescribed in GWT', value: true, remark: 'Logo size verified' },
+                      { label: '1. Site logo is easy to find (i.e., located on top of the page)', value: hasPass('identity.logo_featured'), remark: hasPass('identity.logo_featured') ? 'Logo positioning verified' : 'Logo positioning failed' },
+                      { label: '2. Site logo links to the home page', value: hasPass('identity.logo_home_link'), remark: hasPass('identity.logo_home_link') ? 'Logo link verified' : 'Logo link not working' },
+                      { label: '3. Follow recommended logo size as prescribed in GWT', value: hasPass('identity.logo_size'), remark: hasPass('identity.logo_size') ? 'Logo size verified' : 'Logo size incorrect' },
                     ].map((item, idx) => (
                       <tr key={`id-a${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
@@ -840,11 +838,11 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">B. Home-page is digestible in 5 seconds</td>
                     </tr>
                     {[
-                      { label: '1. Tagline makes company\'s purpose clear', value: true, remark: 'Tagline verified' },
-                      { label: '2. Purpose of the site and the critical actions are clear within 5 seconds', value: true, remark: 'Purpose clarity verified' },
-                      { label: '3. Homepage/starting page provides clear snapshot and overview of content, features and functionality available.', value: true, remark: 'Homepage overview verified' },
-                      { label: '4. Home page/starting page is effective in orienting and directing users to their desired information and tasks.', value: true, remark: 'Orientation verified' },
-                      { label: '5. Homepage/starting page layout is clear and uncluttered with sufficient \'white space\'.', value: true, remark: 'Layout verified' },
+                      { label: '1. Tagline makes company\'s purpose clear', value: hasPass('identity.tagline_purpose'), remark: hasPass('identity.tagline_purpose') ? 'Tagline verified' : 'Tagline missing or unclear' },
+                      { label: '2. Purpose of the site and the critical actions are clear within 5 seconds', value: hasPass('identity.homepage_digestible'), remark: hasPass('identity.homepage_digestible') ? 'Purpose clarity verified' : 'Purpose not clear' },
+                      { label: '3. Homepage/starting page provides clear snapshot and overview of content, features and functionality available.', value: hasChecksPassing('overview', 'content'), remark: hasChecksPassing('overview', 'content') ? 'Homepage overview verified' : 'Overview not clear' },
+                      { label: '4. Home page/starting page is effective in orienting and directing users to their desired information and tasks.', value: hasChecksPassing('orient', 'direct', 'nav'), remark: hasChecksPassing('orient', 'direct', 'nav') ? 'Orientation verified' : 'Orientation needs improvement' },
+                      { label: '5. Homepage/starting page layout is clear and uncluttered with sufficient \'white space\'.', value: hasChecksPassing('layout', 'whitespace', 'uncluttered'), remark: hasChecksPassing('layout', 'whitespace', 'uncluttered') ? 'Layout verified' : 'Layout too cluttered' },
                     ].map((item, idx) => (
                       <tr key={`id-b${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>

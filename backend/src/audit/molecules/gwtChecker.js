@@ -1352,6 +1352,66 @@ async function buildParticipationToolsChecks(page) {
     const hasSocialIntegration = /facebook|twitter|instagram|linkedin|youtube|social/i.test(bodyText) ||
                                allLinks.some(a => /facebook\.com|twitter\.com|instagram\.com|linkedin\.com|youtube\.com/i.test(a.href));
     
+    // Calendar detection - check for multiple indicators
+    let hasCalendar = false;
+    
+    // 1. Look for calendar elements by ID/class
+    if (document.querySelector('[id*="calendar" i], [class*="calendar" i], [id*="event" i], [class*="event" i]')) {
+      hasCalendar = true;
+    }
+    
+    // 2. Look for date picker / date input elements
+    if (!hasCalendar && document.querySelector('input[type="date"], input[type="datetime"], [role="navigation"][aria-label*="calendar" i]')) {
+      hasCalendar = true;
+    }
+    
+    // 3. Look for time/date elements (common in calendar UIs)
+    if (!hasCalendar && document.querySelectorAll('time, [role="button"][aria-label*="date" i]').length > 0) {
+      hasCalendar = true;
+    }
+    
+    // 4. Look for month/year pattern in text (e.g., "April 2026", "January 2025")
+    if (!hasCalendar) {
+      const months = ['january|february|march|april|may|june|july|august|september|october|november|december'];
+      const monthYearPattern = new RegExp(`(?:${months[0]})\\s+\\d{4}|\\d{4}\\s+(?:${months[0]})`, 'i');
+      if (monthYearPattern.test(bodyText)) {
+        hasCalendar = true;
+      }
+    }
+    
+    // 5. Look for iframe containing calendar apps (Google Calendar, etc.)
+    if (!hasCalendar && document.querySelector('iframe[src*="calendar" i], iframe[src*="google" i][src*="calendar" i]')) {
+      hasCalendar = true;
+    }
+    
+    // 6. Look for table structure with day names (Sun, Mon, Tue, etc.)
+    if (!hasCalendar) {
+      const tables = document.querySelectorAll('table');
+      for (let table of tables) {
+        const text = table.textContent.toLowerCase();
+        if (/\bsun\b.*\bmon\b.*\btue\b|\bmonday\b.*\btuesday\b.*\bwednesday\b/i.test(text)) {
+          hasCalendar = true;
+          break;
+        }
+      }
+    }
+    
+    // 7. Check for common day/date patterns in text
+    if (!hasCalendar && /\b(?:sun|mon|tue|wed|thu|fri|sat)\b.*\b(?:1[0-9]|2[0-9]|30|31|[1-9])\b|\b(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(bodyText)) {
+      hasCalendar = true;
+    }
+    
+    // Procurement/Bids detection
+    const hasProcurement = /bid|procurement|purchase|tender|rfp|award|auction|supplier|vendor/.test(bodyText) ||
+                          allLinks.some(a => /bid|procurement|purchase|tender|award/i.test(a.textContent || a.getAttribute('href') || '')) ||
+                          document.querySelectorAll('a[href*="bid" i], a[href*="procurement" i], a[href*="purchase" i], a[href*="tender" i]').length > 0;
+    
+    // Portal/One-stop-shop detection
+    const hasPortal = /portal|one-stop|integration|online.*service|e-service|e-government/.test(bodyText) ||
+                     allLinks.some(a => /portal|one-stop|integration|e-service/i.test(a.textContent || a.getAttribute('href') || '')) ||
+                     document.querySelectorAll('a[href*="portal" i], a[href*="integration" i], a[href*="e-service" i]').length > 0 ||
+                     document.querySelector('[id*="portal" i], [class*="portal" i], [id*="one-stop" i], [class*="one-stop" i]') !== null;
+    
     return {
       hasEmailAlerts,
       hasDownloadableDocs,
@@ -1366,6 +1426,9 @@ async function buildParticipationToolsChecks(page) {
       hasFeedbackCollection,
       hasFeedbackPublished,
       hasSocialIntegration,
+      hasCalendar,
+      hasProcurement,
+      hasPortal,
     };
   });
 
@@ -1467,6 +1530,27 @@ async function buildParticipationToolsChecks(page) {
       item: 'Social Networking Sites integration is available',
       status: results.hasSocialIntegration ? 'Pass' : 'Fail',
       remarks: results.hasSocialIntegration ? 'Social media integration detected.' : 'No social media links.',
+    }),
+    normalizeCheck({
+      key: 'tools.calendar',
+      category: 'Participation Tools',
+      item: 'Calendar of upcoming e-participation activities is available',
+      status: results.hasCalendar ? 'Pass' : 'Fail',
+      remarks: results.hasCalendar ? 'Calendar of events detected.' : 'No calendar feature found.',
+    }),
+    normalizeCheck({
+      key: 'tools.procurement',
+      category: 'Participation Tools',
+      item: 'Bid announcements and procurement information is available',
+      status: results.hasProcurement ? 'Pass' : 'Fail',
+      remarks: results.hasProcurement ? 'Bid announcements or procurement information detected.' : 'No bid or procurement information found.',
+    }),
+    normalizeCheck({
+      key: 'tools.portal',
+      category: 'Participation Tools',
+      item: 'One-stop shop agency portal integration is available',
+      status: results.hasPortal ? 'Pass' : 'Fail',
+      remarks: results.hasPortal ? 'Portal or online services integration detected.' : 'No portal integration found.',
     }),
     normalizeCheck({
       key: 'feedback.strategy_feedback',

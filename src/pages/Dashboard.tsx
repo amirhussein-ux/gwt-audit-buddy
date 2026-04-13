@@ -112,44 +112,83 @@ export default function Dashboard() {
       if (responseData.auditLogId) {
         console.log('[Dashboard] Polling for audit completion:', responseData.auditLogId);
         
-        // Poll until audit has sufficient data (50+ checks or uiReport with scores)
+        // Poll until audit status is 'success'
+        // Use exponential backoff: start at 1s, increase to 3s, max 120 seconds total
         let auditComplete = false;
         let pollCount = 0;
-        const maxPolls = 120; // ~4 minutes max wait (2s * 120)
+        let pollInterval = 1000; // Start at 1 second
+        const maxPollInterval = 3000; // Max 3 seconds per poll
+        const maxTotalTime = 120000; // 120 seconds max wait (increased from 90s to accommodate new detection logic)
+        let elapsedTime = 0;
+        const startTime = Date.now();
         
-        while (!auditComplete && pollCount < maxPolls) {
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-          pollCount++;
-          
+        while (!auditComplete && elapsedTime < maxTotalTime) {
           try {
+            // Show progress with elapsed time
+            const elapsedSeconds = Math.round(elapsedTime / 1000);
+            console.log(`[Dashboard] Poll ${pollCount} (${elapsedSeconds}s): Checking audit status...`);
+            
             const checkResponse = await fetch(`${API_BASE}/audit/${responseData.auditLogId}`, {
               headers: { 'Authorization': `Bearer ${token}` },
             });
             
             if (checkResponse.ok) {
               const auditData = await checkResponse.json();
-              const checksCount = auditData.audit?.auditResults?.checks?.length || 0;
-              const webPresenceStage1 = auditData.uiReport?.webPresence?.stage1 || 0;
-              console.log(`[Dashboard] Poll ${pollCount}: checksCount=${checksCount}, webPresenceStage1=${webPresenceStage1}%`);
+              const auditStatus = auditData.audit?.status;
+              const pagesAudited = auditData.audit?.crawledPages?.length || 0;
+              console.log(`[Dashboard] Poll ${pollCount}: status=${auditStatus}, pagesAudited=${pagesAudited}`);
               
-              // Audit is complete when we have checks and uiReport with non-zero scores
-              if (checksCount >= 50 && webPresenceStage1 > 0) {
+              // Audit is complete when backend marks it as 'success'
+              if (auditStatus === 'success') {
                 auditComplete = true;
                 console.log('[Dashboard] Audit complete! Data is ready.');
+              } else if (auditStatus === 'failed') {
+                throw new Error(auditData.audit?.error || 'Audit failed on server');
+              } else {
+                // Still in progress - update progress display based on elapsed time
+                // Simulate step progression
+                const progressPercent = Math.min((elapsedTime / 60000) * 100, 95); // Max 95% while in progress
+                const stepIndex = Math.floor((progressPercent / 100) * (AUDIT_STEPS.length - 1));
+                
+                setSteps((prev) => 
+                  prev.map((s, idx) => {
+                    if (idx < stepIndex) return { ...s, status: 'done' };
+                    if (idx === stepIndex) return { ...s, status: 'running' };
+                    return { ...s, status: 'pending' };
+                  })
+                );
               }
             }
+            
+            // Wait before next poll with exponential backoff
+            pollCount++;
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+            
+            // Increase interval up to maxPollInterval
+            pollInterval = Math.min(pollInterval + 500, maxPollInterval);
+            
+            elapsedTime = Date.now() - startTime;
           } catch (pollError) {
             console.error('[Dashboard] Poll error:', pollError);
-            // Continue polling even if one poll fails
+            // If it's a server error, throw immediately
+            if (pollError instanceof Error && pollError.message.includes('failed')) {
+              throw pollError;
+            }
+            // Otherwise continue polling on network errors
+            elapsedTime = Date.now() - startTime;
+            if (elapsedTime >= maxTotalTime) {
+              throw new Error(`Audit polling timed out after ${Math.round(elapsedTime / 1000)}s`);
+            }
           }
         }
         
         if (auditComplete) {
           console.log('[Dashboard] Redirecting to audit detail:', responseData.auditLogId);
+          setSteps((prev) => prev.map((s) => ({ ...s, status: 'done' })));
           navigate(`/audit/${responseData.auditLogId}`);
           setIsRunning(false);
         } else {
-          throw new Error('Audit took too long to complete. Please refresh the page.');
+          throw new Error(`Audit processing timed out after ${Math.round(elapsedTime / 1000)}s. Please try refreshing the page in a moment.`);
         }
       } else {
         throw new Error('No audit ID returned from server');
@@ -209,8 +248,6 @@ export default function Dashboard() {
         {lastAudit && (
           <AuditSummaryReport 
             audit={lastAudit}
-            onDownloadExcel={() => alert('Download Excel functionality coming soon')}
-            onDownloadPdf={() => alert('Download PDF functionality coming soon')}
           />
         )}
 

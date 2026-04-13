@@ -737,16 +737,28 @@ async function generateAuditReport(auditResults) {
   
   const checkIndex = new Map((auditResults.checks || []).map((check) => [check.key, check]));
 
-  const workbook = await loadOrCreateTemplateWorkbook();
+  // Always create a fresh workbook to avoid template caching issues
+  // This ensures Web Usability Assessment rows aren't identical across audits
+  const workbook = new ExcelJS.Workbook();
   workbook.creator = 'GWT Audit Buddy';
   workbook.created = new Date();
 
-  const sheet = workbook.getWorksheet('Audit Summary') || workbook.getWorksheet(1) || buildWorksheet(workbook);
+  // Build a completely fresh sheet to avoid any template interference
+  const sheet = buildWorksheet(workbook);
+  
   sheet.getCell('A3').value = 'Target URL';
   sheet.getCell('B3').value = auditResults.url;
   sheet.getCell('A4').value = 'Audit Date';
   sheet.getCell('B4').value = auditResults.auditedAt;
 
+  // DEBUG: Log audit-specific check data
+  console.log(`[generateAuditReport] Generating report for ${auditResults.url} with ${checkIndex.size} checks`);
+  
+  const webUsabilityChecks = [];
+  const webPresenceChecks = [];
+  let webUsabilityRowsWritten = 0;
+  let webPresenceRowsWritten = 0;
+  
   mapping.forEach((mapRow) => {
     const check = checkIndex.get(mapRow.key);
     const status = check ? check.status : 'N/A';
@@ -762,7 +774,21 @@ async function generateAuditReport(auditResults) {
     sheet.getCell(`E${targetRow}`).value = status;
     sheet.getCell(`F${targetRow}`).value = remarks;
     sheet.getCell(`E${targetRow}`).fill = statusFill(status);
+    
+    // Track which rows were written for debugging
+    if (mapRow.assessmentForm?.includes('Web Usability')) {
+      webUsabilityRowsWritten++;
+      webUsabilityChecks.push({ key: mapRow.key, status, guideline: mapRow.guideline });
+    } else if (mapRow.assessmentForm?.includes('Web Presence')) {
+      webPresenceRowsWritten++;
+      webPresenceChecks.push({ key: mapRow.key, status, guideline: mapRow.guideline });
+    }
   });
+
+  // Log sample of Web Usability checks to verify audit-specific data
+  const sampleWebUsability = webUsabilityChecks.slice(0, 5);
+  console.log(`[generateAuditReport] Web Usability sample (first 5): ${JSON.stringify(sampleWebUsability)}`);
+  console.log(`[generateAuditReport] Wrote ${webUsabilityRowsWritten} Web Usability rows and ${webPresenceRowsWritten} Web Presence rows for ${auditResults.url}`);
 
   sheet.getColumn('F').alignment = { wrapText: true, vertical: 'top' };
   sheet.eachRow((row) => {

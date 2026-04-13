@@ -5,6 +5,13 @@ const mongoose = require('mongoose');
  * Optimized for traditional long-running server (Express + PM2)
  */
 
+/**
+ * Global Mongoose Configuration
+ * Set defaults to use returnDocument instead of deprecated `new` option
+ * This prevents deprecation warnings from findOneAndUpdate, findByIdAndUpdate, findOneAndReplace
+ */
+mongoose.set('returnOriginal', false); // Use `returnDocument: 'after'` by default
+
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI;
@@ -34,6 +41,9 @@ const connectDB = async () => {
       // Retry logic
       retryWrites: true,
       retryReads: true,
+
+      // Connection pool monitoring for debugging
+      monitorCommands: false, // Set to true to see detailed connection logs
     };
 
     console.log('[MongoDB] Connecting to cluster...');
