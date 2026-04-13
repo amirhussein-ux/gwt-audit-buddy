@@ -5,7 +5,15 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node src/server.js"
+    "dev": "pm2 start ecosystem.config.cjs && pm2 logs gwt-audit-backend",
+    "dev:stop": "pm2 stop gwt-audit-backend",
+    "dev:restart": "pm2 restart gwt-audit-backend",
+    "dev:reload": "pm2 reload gwt-audit-backend",
+    "dev:delete": "pm2 delete gwt-audit-backend",
+    "dev:logs": "pm2 logs gwt-audit-backend",
+    "dev:monit": "pm2 monit",
+    "dev:status": "pm2 status",
+    "dev:flush": "pm2 flush gwt-audit-backend"
   },
   "keywords": [],
   "author": "",
@@ -14,10 +22,14 @@
   "dependencies": {
     "@axe-core/playwright": "^4.11.1",
     "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.1",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "mongoose": "^9.4.1",
     "pdfkit": "^0.17.2",
     "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.3"
   }
 }

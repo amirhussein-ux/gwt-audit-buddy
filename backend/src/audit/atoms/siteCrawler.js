@@ -71,21 +71,108 @@ function dedupKey(urlString) {
   }
 }
 
+function shouldDebug() {
+  return String(process.env.AUDIT_DEBUG || '').toLowerCase() === '1';
+}
+
+function debugLog(message, details) {
+  if (!shouldDebug()) return;
+  if (details !== undefined) {
+    console.log(`[crawl-debug] ${message}`, details);
+  } else {
+    console.log(`[crawl-debug] ${message}`);
+  }
+}
+
 /**
  * Fetch links from a page. Returns normalized same-site URLs.
  */
 async function extractLinks(page, origin) {
-  const hrefs = await page
-    .$$eval('a[href]', (anchors) => anchors.map((a) => a.getAttribute('href')).filter(Boolean))
-    .catch(() => []);
+  // First, ensure the page has rendered links (don't try to extract before DOM is ready)
+  let linkCount = 0;
+  let hrefs = [];
+  
+  try {
+    // Try to count links on page
+    try {
+      linkCount = await page.$$eval('a[href]', (anchors) => anchors.length);
+      debugLog('Initial link count on page', { url: page.url(), linkCount });
+    } catch (countErr) {
+      debugLog('Error counting links, trying to extract anyway', { url: page.url(), error: countErr.message });
+    }
+    
+    // If no links found on first try, wait up to 5 seconds for DOM to render
+    if (linkCount === 0) {
+      debugLog('No links found initially, waiting for DOM...', { url: page.url() });
+      try {
+        await page.waitForFunction(() => document.querySelectorAll('a[href]').length > 0, {
+          timeout: 5000,
+        });
+        linkCount = await page.$$eval('a[href]', (anchors) => anchors.length);
+        debugLog('Links found after wait', { url: page.url(), linkCount });
+      } catch (waitErr) {
+        debugLog('Wait for links timed out or failed', { url: page.url(), error: waitErr.message });
+        // Don't return early - still try to extract what we can
+      }
+    }
+
+    // Extract href attributes from all links
+    try {
+      hrefs = await page.$$eval('a[href]', (anchors) => 
+        anchors
+          .map((a) => {
+            const href = a.getAttribute('href');
+            return href ? href.trim() : null;
+          })
+          .filter(Boolean)
+      );
+      debugLog('Successfully extracted hrefs', { url: page.url(), hrefCount: hrefs.length });
+    } catch (extractErr) {
+      debugLog('Failed to extract hrefs with $$eval', { url: page.url(), error: extractErr.message });
+      // Fallback: try evaluate() instead
+      try {
+        hrefs = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('a[href]'))
+            .map(a => a.getAttribute('href'))
+            .filter(Boolean);
+        });
+        debugLog('Successfully extracted hrefs using evaluate()', { url: page.url(), hrefCount: hrefs.length });
+      } catch (fallbackErr) {
+        debugLog('Failed fallback href extraction', { url: page.url(), error: fallbackErr.message });
+        return [];
+      }
+    }
+  } catch (err) {
+    debugLog('Unexpected error in extractLinks', { url: page.url(), error: err.message });
+    return [];
+  }
+
+  debugLog('Extracted raw hrefs from page', { url: page.url(), hrefCount: hrefs.length, uniqueUrls: new Set(hrefs).size });
 
   const result = [];
+  const skippedReasons = { notUrl: 0, wrongOrigin: 0, alreadyNormalized: 0, success: 0 };
+  
   for (const href of hrefs) {
     const normalized = normalizeUrl(href, origin);
-    if (normalized && isSameSiteUrl(normalized, origin)) {
-      result.push(normalized);
+    if (!normalized) {
+      skippedReasons.notUrl++;
+      continue;
     }
+    if (!isSameSiteUrl(normalized, origin)) {
+      skippedReasons.wrongOrigin++;
+      debugLog('Link is different origin', { href, normalized, origin });
+      continue;
+    }
+    result.push(normalized);
+    skippedReasons.success++;
   }
+
+  debugLog('Link extraction summary', { 
+    url: page.url(), 
+    valid: result.length, 
+    ...skippedReasons 
+  });
+  
   return result;
 }
 
@@ -93,7 +180,10 @@ async function extractLinks(page, origin) {
  * Crawl a site and return an array of { url, depth } objects.
  *
  * @param {string} startUrl
- * @param {{ maxPages?: number, maxDepth?: number, timeoutMs?: number, concurrency?: number }} options
+ * @param {{ maxPages?: number, maxDepth?: number, timeoutMs?: number, concurrency?: number, context?: BrowserContext }} options
+ *
+ * If options.context is provided, crawler reuses it (caller owns lifecycle).
+ * If not provided, crawler launches its own browser/context (backward compatible).
  */
 async function crawlSiteUrls(startUrl, options = {}) {
   const maxPages   = Number(options.maxPages)   > 0 ? Number(options.maxPages)   : 20;
@@ -106,40 +196,102 @@ async function crawlSiteUrls(startUrl, options = {}) {
   const normalizedStart = normalizeUrl(startUrl, origin);
   if (!normalizedStart) return [];
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  // Use provided context, or launch own browser if not provided.
+  const externalContext = Boolean(options.context);
+  let browser = null;
+  let context = options.context;
 
-  // Block heavy resources for the entire crawl.
-  await context.route('**/*', (route) => {
-    if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) return route.abort();
-    return route.continue();
-  });
+  if (!context) {
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-sync',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--no-default-browser-check',
+        '--disable-plugins',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-pings',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--no-proxy-server',
+      ],
+    });
+    context = await browser.newContext({ ignoreHTTPSErrors: true });
+
+    // Block heavy resources (only if we created the context ourselves).
+    await context.route('**/*', (route) => {
+      if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) return route.abort();
+      return route.continue();
+    });
+  }
 
   const visitedKeys = new Set([dedupKey(normalizedStart)]);
   // BFS queue: { url, depth }
   const queue = [{ url: normalizedStart, depth: 0 }];
   const discovered = [];
 
+  debugLog('Starting crawl', { 
+    startUrl, 
+    normalizedStart,
+    origin, 
+    maxPages, 
+    maxDepth, 
+    concurrency,
+    homepageKey: dedupKey(normalizedStart)
+  });
+
   try {
+    let iteration = 0;
     while (queue.length > 0 && discovered.length < maxPages) {
+      iteration++;
+      debugLog(`Crawl iteration ${iteration}`, { 
+        queueSize: queue.length, 
+        discoveredSoFar: discovered.length,
+        pagesNeeded: maxPages - discovered.length
+      });
+
       // Drain up to `concurrency` items from the queue at once.
       const batch = [];
       while (queue.length > 0 && batch.length < concurrency && discovered.length + batch.length < maxPages) {
         batch.push(queue.shift());
       }
-      if (batch.length === 0) break;
+      if (batch.length === 0) {
+        debugLog('No more items in batch, breaking', { queueSize: queue.length });
+        break;
+      }
+
+      debugLog('Processing batch', { batchSize: batch.length, queueSize: queue.length, discovered: discovered.length });
 
       // Visit all pages in this batch concurrently.
       const batchResults = await Promise.all(
         batch.map(async (item) => {
           const page = await context.newPage();
           try {
-            await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+            debugLog('Navigating to', { url: item.url, depth: item.depth });
+            const response = await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+            debugLog('Navigation complete', { url: item.url, depth: item.depth, statusCode: response?.status() });
+
+            // Wait a bit for dynamic content to render
+            await page.waitForTimeout(800);
 
             // Only extract child links if we haven't hit depth limit.
-            const childLinks = item.depth < maxDepth ? await extractLinks(page, origin) : [];
+            let childLinks = [];
+            if (item.depth < maxDepth) {
+              debugLog('Extracting child links (depth limit not reached)', { url: item.url, currentDepth: item.depth, maxDepth });
+              childLinks = await extractLinks(page, origin);
+            } else {
+              debugLog('Skipping child link extraction (depth limit reached)', { url: item.url, currentDepth: item.depth, maxDepth });
+            }
+            
             return { item, childLinks, error: null };
           } catch (err) {
+            debugLog('Page load error', { url: item.url, error: err.message, code: err.code });
             return { item, childLinks: [], error: err.message };
           } finally {
             await page.close().catch(() => {});
@@ -147,23 +299,42 @@ async function crawlSiteUrls(startUrl, options = {}) {
         })
       );
 
-      for (const { item, childLinks } of batchResults) {
+      for (const { item, childLinks, error } of batchResults) {
         discovered.push(item);
+        debugLog('Page discovered and added', { url: item.url, totalDiscovered: discovered.length, hadError: !!error });
 
+        if (error) {
+          debugLog('Skipping link extraction due to page error', { url: item.url, error });
+          continue;
+        }
+
+        debugLog('Processing child links', { url: item.url, linkCount: childLinks.length });
+        
         for (const href of childLinks) {
           const key = dedupKey(href);
-          if (visitedKeys.has(key)) continue;
-          if (visitedKeys.size >= maxPages * 2) break; // guard against huge sites
+          if (visitedKeys.has(key)) {
+            debugLog('Duplicate URL, skipping', { url: href });
+            continue;
+          }
+          if (visitedKeys.size >= maxPages * 2) {
+            debugLog('Visited keys limit reached, stopping link processing', { size: visitedKeys.size, limit: maxPages * 2 });
+            break;
+          }
           visitedKeys.add(key);
           queue.push({ url: href, depth: item.depth + 1 });
+          debugLog('New URL queued', { url: href, depth: item.depth + 1, queueSize: queue.length });
         }
       }
     }
 
+    debugLog('Crawl complete', { discovered: discovered.length, maxPages, finalQueueSize: queue.length });
     return discovered;
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    // Only close if we created the context (backward compatibility).
+    if (!externalContext) {
+      await context.close().catch(() => {});
+      if (browser) await browser.close().catch(() => {});
+    }
   }
 }
 

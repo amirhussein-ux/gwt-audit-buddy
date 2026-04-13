@@ -168,7 +168,7 @@ All checks use DOM inspection via `page.evaluate()`:
 ### Potential Enhancements
 1. **Semantic Content Analysis**: Expand Gemini-based checks for headings, content tone, readability
 2. **Deep Structure Analysis**: Multi-page crawl to check consistency across entire site
-3. **Accessibility Scoring**: More granular scoring for WCAG compliance
+3. **Web Usability Scoring**: Scoring based on accessibility, identity, navigation, and content factors
 4. **Performance Optimization**: Analyze Lighthouse metrics
 5. **Security Checks**: SSL certificate, HTTPS, security headers validation
 6. **Mobile Detection**: Responsive design verification

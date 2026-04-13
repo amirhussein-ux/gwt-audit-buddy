@@ -5,23 +5,77 @@ const PDFDocument = require('pdfkit');
 
 const TEMPLATE_PATH = path.join(__dirname, '..', '..', 'templates', 'Web Accessibility Audit Summary Report.xlsx');
 
+// ─── Assessment Stage Reference ────────────────────────────────────────────────
+// Web Presence Stages (PPMED GWT framework):
+//   Stage 1 – Emerging     : basic presence, identity, navigation essentials
+//   Stage 2 – Enhanced     : content quality, accessibility, error handling
+//   Stage 3 – Transactional: services, participation, advanced presence
+//   Stage 4 – Connected    : integration, semantic quality, interoperability
+//
+// Web Usability Sub-categories:
+//   Usability - Accessibility : a11y checks (alt text, contrast, labels, links)
+//   Usability - Performance   : load time
+//   Usability - Identity      : brand, logo, tagline
+//   Usability - Navigation    : nav structure, breadcrumbs, home link
+//   Usability - Content       : content quality, readability
+// ───────────────────────────────────────────────────────────────────────────────
+
 const DEFAULT_MAPPING = [
-  { rowNo: '1', templateRow: '7', key: 'performance.avg_load_time', category: 'Performance', guideline: 'Average page load time across 3 trials is 10 seconds or less', assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Performance' },
-  { rowNo: '2', templateRow: '8', key: 'a11y.image_alt', category: 'Technical Accessibility', guideline: 'Image alternative text checks (H.1, H.2, H.3)', assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
-  { rowNo: '3', templateRow: '9', key: 'a11y.color_contrast', category: 'Technical Accessibility', guideline: 'Color contrast checks (C.1, C.2)', assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
-  { rowNo: '4', templateRow: '10', key: 'a11y.form_labels', category: 'Technical Accessibility', guideline: 'Form inputs have associated labels (H.6)', assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
-  { rowNo: '5', templateRow: '11', key: 'a11y.descriptive_links', category: 'Technical Accessibility', guideline: 'Avoid non-descriptive links like "Click Here" (B.10)', assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Content' },
-  { rowNo: '6', templateRow: '12', key: 'presence.pst', category: 'Presence & Identity', guideline: 'PST element present in masthead', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Presence and Identity' },
-  { rowNo: '7', templateRow: '13', key: 'presence.logo_home', category: 'Presence & Identity', guideline: 'Logo is in masthead and links to homepage', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Presence and Identity' },
-  { rowNo: '8', templateRow: '14', key: 'presence.transparency_seal_link', category: 'Presence & Identity', guideline: 'Transparency Seal image exists and has a link', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Presence and Identity' },
-  { rowNo: '9', templateRow: '15', key: 'presence.breadcrumbs', category: 'Presence & Identity', guideline: 'Breadcrumb navigation is enabled', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Navigation' },
-  { rowNo: '10', templateRow: '16', key: 'presence.govph_link', category: 'Presence & Identity', guideline: 'GovPH link exists in top menu', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Presence and Identity' },
-  { rowNo: '11', templateRow: '17', key: 'navigation.about_link', category: 'Navigation', guideline: 'About Us link is easy to find at top', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Navigation' },
-  { rowNo: '12', templateRow: '18', key: 'navigation.contact_link', category: 'Navigation', guideline: 'Contact link is easy to find at top', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Navigation' },
-  { rowNo: '13', templateRow: '19', key: 'error.custom_404', category: 'Error Handling', guideline: 'Custom 404 page is returned for invalid path', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Error Handling' },
-  { rowNo: '14', templateRow: '20', key: 'semantic.tagline_clear', category: 'Semantic Content', guideline: 'Tagline clearly states institution purpose', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Content and Semantics' },
-  { rowNo: '15', templateRow: '21', key: 'semantic.whitespace_layout', category: 'Semantic Content', guideline: 'Homepage is uncluttered with sufficient white space', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Content and Semantics' },
-  { rowNo: '16', templateRow: '22', key: 'semantic.about_contact_top', category: 'Semantic Content', guideline: 'About Us and Contact Us are easy to find at top', assessmentForm: 'Web Accessibility Assessment Form - Web Presence', assessmentSection: 'Navigation' },
+  // ── Web Usability — Performance ──────────────────────────────────────────
+  { rowNo: '1',  templateRow: '7',  key: 'performance.avg_load_time',          category: 'Performance',            assessmentStage: 'Usability - Performance',    guideline: 'Average page load time across 3 trials is 10 seconds or less',    assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Performance' },
+
+  // ── Web Usability — Accessibility ────────────────────────────────────────
+  { rowNo: '2',  templateRow: '8',  key: 'a11y.image_alt',                     category: 'Technical Accessibility', assessmentStage: 'Usability - Accessibility',  guideline: 'Image alternative text checks (H.1, H.2, H.3)',                   assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
+  { rowNo: '3',  templateRow: '9',  key: 'a11y.color_contrast',                category: 'Technical Accessibility', assessmentStage: 'Usability - Accessibility',  guideline: 'Color contrast checks (C.1, C.2)',                                assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
+  { rowNo: '4',  templateRow: '10', key: 'a11y.form_labels',                   category: 'Technical Accessibility', assessmentStage: 'Usability - Accessibility',  guideline: 'Form inputs have associated labels (H.6)',                        assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
+  { rowNo: '5',  templateRow: '11', key: 'a11y.descriptive_links',             category: 'Technical Accessibility', assessmentStage: 'Usability - Accessibility',  guideline: 'Avoid non-descriptive links like "Click Here" (B.10)',            assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
+  { rowNo: '6',  templateRow: '23', key: 'browser.mobile_viewability',         category: 'Browser Compatibility',   assessmentStage: 'Usability - Accessibility',  guideline: 'Important content is viewable on small screens without scrolling', assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Accessibility' },
+
+  // ── Web Usability — Identity ─────────────────────────────────────────────
+  { rowNo: '7',  templateRow: '24', key: 'identity.logo_featured',             category: 'Brand Identity',          assessmentStage: 'Usability - Identity',       guideline: 'Site logo is easy to find (located on top of page)',             assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Identity' },
+  { rowNo: '8',  templateRow: '25', key: 'identity.tagline_purpose',           category: 'Brand Identity',          assessmentStage: 'Usability - Identity',       guideline: 'Tagline clearly states institution purpose',                      assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Identity' },
+
+  // ── Web Usability — Navigation ───────────────────────────────────────────
+  { rowNo: '9',  templateRow: '26', key: 'navigation.home_link',               category: 'Navigation',              assessmentStage: 'Usability - Navigation',     guideline: 'Home link is easy to find at top (masthead)',                    assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Navigation' },
+  { rowNo: '10', templateRow: '27', key: 'navigation.about_link',              category: 'Navigation',              assessmentStage: 'Usability - Navigation',     guideline: 'About Us link is easy to find at top',                           assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Navigation' },
+  { rowNo: '11', templateRow: '28', key: 'navigation.contact_link',            category: 'Navigation',              assessmentStage: 'Usability - Navigation',     guideline: 'Contact link is easy to find at top',                            assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Navigation' },
+  { rowNo: '12', templateRow: '29', key: 'presence.breadcrumbs',               category: 'Presence & Identity',     assessmentStage: 'Usability - Navigation',     guideline: 'Breadcrumb navigation is enabled',                               assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Navigation' },
+
+  // ── Web Usability — Content ──────────────────────────────────────────────
+  { rowNo: '13', templateRow: '30', key: 'content.critical_above_fold_line',   category: 'Content',                 assessmentStage: 'Usability - Content',        guideline: 'Critical content is above the fold',                             assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Content' },
+  { rowNo: '14', templateRow: '31', key: 'content.content_quality',            category: 'Content',                 assessmentStage: 'Usability - Content',        guideline: 'Content is clear, accurate, and up to date',                     assessmentForm: 'Web Accessibility Assessment Form - Web Usability', assessmentSection: 'Content' },
+
+  // ── Web Presence — Stage 1 (Emerging) ───────────────────────────────────
+  { rowNo: '15', templateRow: '12', key: 'presence.pst',                       category: 'Presence & Identity',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'PST element present in masthead',                                assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Presence and Identity' },
+  { rowNo: '16', templateRow: '13', key: 'presence.logo_home',                 category: 'Presence & Identity',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'Logo is in masthead and links to homepage',                      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Presence and Identity' },
+  { rowNo: '17', templateRow: '14', key: 'presence.transparency_seal_link',    category: 'Presence & Identity',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'Transparency Seal image exists and has a link',                  assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Presence and Identity' },
+  { rowNo: '18', templateRow: '15', key: 'presence.govph_link',                category: 'Presence & Identity',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'GovPH link exists in top menu',                                  assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Presence and Identity' },
+  { rowNo: '19', templateRow: '16', key: 'presence.citizens_charter',          category: 'Presence & Identity',     assessmentStage: 'Stage 1 - Emerging',         guideline: "Citizens' Charter is documented",                                assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Presence and Identity' },
+  { rowNo: '20', templateRow: '17', key: 'contact_info.email',                 category: 'Contact Information',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'Email address is provided',                                      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Contact Information' },
+  { rowNo: '21', templateRow: '18', key: 'contact_info.phone',                 category: 'Contact Information',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'Telephone number is provided',                                   assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Contact Information' },
+  { rowNo: '22', templateRow: '19', key: 'contact_info.fax',                   category: 'Contact Information',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'Fax number is provided',                                         assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Contact Information' },
+  { rowNo: '23', templateRow: '20', key: 'contact_info.mobile',                category: 'Contact Information',     assessmentStage: 'Stage 1 - Emerging',         guideline: 'Mobile number is provided',                                      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Contact Information' },
+
+  // ── Web Presence — Stage 2 (Enhanced) ───────────────────────────────────
+  { rowNo: '24', templateRow: '32', key: 'error.custom_404',                   category: 'Error Handling',          assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Custom 404 page is returned for invalid path',                   assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Error Handling' },
+  { rowNo: '25', templateRow: '33', key: 'presence.mandate_functions',         category: 'Presence & Identity',     assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Mandate and functions are documented',                           assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Company Information' },
+  { rowNo: '26', templateRow: '34', key: 'presence.mission_vision',            category: 'Presence & Identity',     assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Mission and Vision statements are present',                      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Company Information' },
+  { rowNo: '27', templateRow: '35', key: 'presence.contact_details',           category: 'Presence & Identity',     assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Contact details (phone/fax/email/address) provided',             assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Contact Information' },
+  { rowNo: '28', templateRow: '36', key: 'contact_info.social_networks',       category: 'Contact Information',     assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Social networking sites are linked',                             assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Contact Information' },
+  { rowNo: '29', templateRow: '37', key: 'semantic.tagline_clear',             category: 'Semantic Content',        assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Tagline makes the institution purpose clear',                    assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Content and Semantics' },
+  { rowNo: '30', templateRow: '38', key: 'semantic.whitespace_layout',         category: 'Semantic Content',        assessmentStage: 'Stage 2 - Enhanced',         guideline: 'Homepage layout is uncluttered with sufficient white space',      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Content and Semantics' },
+  { rowNo: '31', templateRow: '39', key: 'semantic.about_contact_top',         category: 'Semantic Content',        assessmentStage: 'Stage 2 - Enhanced',         guideline: 'About Us and Contact Us are easy to find at top',                assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Content and Semantics' },
+
+  // ── Web Presence — Stage 3 (Transactional) ──────────────────────────────
+  { rowNo: '32', templateRow: '40', key: 'presence.products_services',         category: 'Presence & Identity',     assessmentStage: 'Stage 3 - Transactional',    guideline: 'Products or services are documented',                            assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Services' },
+  { rowNo: '33', templateRow: '41', key: 'contact_info.feedback_form',         category: 'Contact Information',     assessmentStage: 'Stage 3 - Transactional',    guideline: 'Feedback form is provided',                                      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Participation' },
+  { rowNo: '34', templateRow: '42', key: 'presence.govph_footer_link',         category: 'Presence & Identity',     assessmentStage: 'Stage 3 - Transactional',    guideline: 'Standard footer with government agency links',                   assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Presence and Identity' },
+  { rowNo: '35', templateRow: '43', key: 'navigation.menu_consistency',        category: 'Navigation',              assessmentStage: 'Stage 3 - Transactional',    guideline: 'Menu scheme is consistent across crawled pages',                 assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Navigation' },
+
+  // ── Web Presence — Stage 4 (Connected) ──────────────────────────────────
+  { rowNo: '36', templateRow: '44', key: 'semantic.layout_density',            category: 'Semantic Content',        assessmentStage: 'Stage 4 - Connected',        guideline: 'Homepage is not overloaded with competing visual elements',      assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Content and Semantics' },
+  { rowNo: '37', templateRow: '45', key: 'presence.sitemap',                   category: 'Presence & Identity',     assessmentStage: 'Stage 4 - Connected',        guideline: 'Sitemap is available',                                           assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Navigation' },
+  { rowNo: '38', templateRow: '46', key: 'security.https',                     category: 'Security',                assessmentStage: 'Stage 4 - Connected',        guideline: 'Site uses HTTPS / SSL encryption',                               assessmentForm: 'Web Accessibility Assessment Form - Web Presence',  assessmentSection: 'Security' },
 ];
 
 function parseCsvLine(line) {
@@ -63,40 +117,51 @@ async function loadAssessmentMapping() {
   try {
     await fs.access(mappingPath);
   } catch {
+    console.warn('Assessment Guidelines.csv not found, using defaults');
     return DEFAULT_MAPPING;
   }
 
-  const raw = await fs.readFile(mappingPath, 'utf8');
-  const lines = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  try {
+    const raw = await fs.readFile(mappingPath, 'utf8');
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-  if (lines.length < 2) {
-    return DEFAULT_MAPPING;
-  }
+    if (lines.length < 2) {
+      console.warn('Assessment Guidelines.csv has insufficient rows, using defaults');
+      return DEFAULT_MAPPING;
+    }
 
-  const headers = parseCsvLine(lines[0]).map((header) => header.toLowerCase());
-  const records = lines.slice(1).map((line) => {
-    const values = parseCsvLine(line);
-    const record = {};
-    headers.forEach((header, index) => {
-      record[header] = values[index] || '';
+    const headers = parseCsvLine(lines[0]).map((header) => header.toLowerCase());
+    const records = lines.slice(1).map((line) => {
+      const values = parseCsvLine(line);
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header] = values[index] || '';
+      });
+      const key = record.key || record.id || '';
+      const assessmentForm = record.assessmentform || record.form || '';
+      const rawStage = record.assessmentstage || record.stage || '';
+      return {
+        rowNo: record.rowno || record.row_no || record.row || '',
+        templateRow: record.templaterow || record.template_row || '',
+        key,
+        category: record.category || 'General',
+        guideline: record.guideline || record.item || record.description || '',
+        assessmentForm,
+        // If CSV has no assessmentStage, infer it from key + form so scoring works
+        assessmentStage: rawStage || inferAssessmentStage(key, assessmentForm),
+        assessmentSection: record.assessmentsection || record.section || '',
+      };
     });
-    return {
-      rowNo: record.rowno || record.row_no || record.row || '',
-      templateRow: record.templaterow || record.template_row || '',
-      key: record.key || record.id || '',
-      category: record.category || 'General',
-      guideline: record.guideline || record.item || record.description || '',
-      assessmentForm: record.assessmentform || record.form || '',
-      assessmentStage: record.assessmentstage || record.stage || '',
-      assessmentSection: record.assessmentsection || record.section || '',
-    };
-  });
 
-  const valid = records.filter((record) => record.key && record.guideline);
-  return valid.length > 0 ? valid : DEFAULT_MAPPING;
+    const valid = records.filter((record) => record.key && record.guideline);
+    return valid.length > 0 ? valid : DEFAULT_MAPPING;
+  } catch (err) {
+    console.error('Error reading Assessment Guidelines.csv:', err);
+    return DEFAULT_MAPPING;
+  }
 }
 
 function buildWorksheet(workbook) {
@@ -224,8 +289,16 @@ function percentFromChecks(checks) {
     return 0;
   }
 
+  const statuses = checks.map(c => c.status);
+  const passCount = statuses.filter(s => s === 'Pass').length;
+  const naCount = statuses.filter(s => s === 'N/A').length;
+  const failCount = statuses.filter(s => s === 'Fail').length;
+
   const total = checks.reduce((sum, check) => sum + scoreFromStatus(check.status), 0);
-  return Math.round((total / checks.length) * 100);
+  const percent = Math.round((total / checks.length) * 100);
+  
+  console.log(`    Pass: ${passCount}, N/A: ${naCount}, Fail: ${failCount} => ${percent}%`);
+  return percent;
 }
 
 // Map a percentage (0-100) to the transmuted point values for Web Presence
@@ -243,6 +316,44 @@ function checksByKeys(checkIndex, keys) {
   return keys
     .map((key) => checkIndex.get(key))
     .filter(Boolean);
+}
+
+// Fallback stage inference — used when CSV mapping lacks assessmentStage.
+// Mirrors the DEFAULT_MAPPING stage assignments above.
+function inferAssessmentStage(checkKey, assessmentForm) {
+  const isPresence = (assessmentForm || '').includes('Web Presence');
+  const isUsability = (assessmentForm || '').includes('Web Usability');
+
+  if (isUsability) {
+    if (checkKey.startsWith('performance.'))                    return 'Usability - Performance';
+    if (checkKey.startsWith('a11y.') || checkKey === 'browser.mobile_viewability') return 'Usability - Accessibility';
+    if (checkKey.startsWith('identity.'))                       return 'Usability - Identity';
+    if (checkKey.startsWith('navigation.') || checkKey === 'presence.breadcrumbs') return 'Usability - Navigation';
+    if (checkKey.startsWith('content.'))                        return 'Usability - Content';
+    return 'Usability - Accessibility';
+  }
+
+  if (isPresence) {
+    // Stage 1 — Emerging
+    if (['presence.pst', 'presence.logo_home', 'presence.transparency_seal_link',
+         'presence.govph_link', 'presence.citizens_charter',
+         'contact_info.email', 'contact_info.phone',
+         'contact_info.fax', 'contact_info.mobile'].includes(checkKey)) return 'Stage 1 - Emerging';
+    // Stage 2 — Enhanced
+    if (['error.custom_404', 'presence.mandate_functions', 'presence.mission_vision',
+         'presence.contact_details', 'contact_info.social_networks',
+         'semantic.tagline_clear', 'semantic.whitespace_layout',
+         'semantic.about_contact_top'].includes(checkKey))             return 'Stage 2 - Enhanced';
+    // Stage 3 — Transactional
+    if (['presence.products_services', 'contact_info.feedback_form',
+         'presence.govph_footer_link', 'navigation.menu_consistency'].includes(checkKey)) return 'Stage 3 - Transactional';
+    // Stage 4 — Connected
+    if (['semantic.layout_density', 'presence.sitemap', 'security.https'].includes(checkKey)) return 'Stage 4 - Connected';
+    // Default unmapped presence keys to Stage 1
+    return 'Stage 1 - Emerging';
+  }
+
+  return 'Stage 1 - Emerging';
 }
 
 function inferAssessmentForm(checkKey, category) {
@@ -282,8 +393,14 @@ function inferAutomationMethod(checkKey) {
 }
 
 function buildTraceabilityRows(mapping, checkIndex) {
+  // Defensive check
+  if (!Array.isArray(mapping)) {
+    console.error('buildTraceabilityRows: mapping is not an array', { type: typeof mapping, value: mapping });
+    return [];
+  }
+  
   return mapping.map((mapRow) => {
-    const check = checkIndex.get(mapRow.key);
+    const check = checkIndex?.get(mapRow.key);
     const status = check?.status || 'N/A';
     return {
       rowNo: mapRow.rowNo || '',
@@ -323,8 +440,44 @@ function buildOrderedCategories(mapping, checkIndex) {
 
 async function buildUiAuditSummary(auditResults) {
   const mapping = await loadAssessmentMapping();
+  
+  // Defensive checks to ensure mapping is valid
+  if (!Array.isArray(mapping)) {
+    console.error(`buildAssessmentMapping returned invalid type: ${typeof mapping}. Using fallback with empty traceability.`);
+    // Return a minimal valid response instead of throwing
+    return {
+      url: auditResults.url,
+      date: new Date(auditResults.auditedAt).toLocaleString(),
+      webPresence: { stage1: 0, stage2: 0, stage3: 0, stage4: 0, total: 0, legend: { 0: { label: 'No Data', color: '#999' }, 1: { label: 'Pass', color: '#28a745' }, 2: { label: 'Partial', color: '#fd7e14' }, 3: { label: 'Fail', color: '#f8d7da' } } },
+      webUsability: { accessibility: 0, identity: 0, navigation: 0, content: 0, total: 0 },
+      categories: [],
+      methodology: { mappedGuidelines: 0, evaluatedGuidelines: 0, coveragePercent: 0, pagesCrawled: auditResults?.crawlSummary?.pagesCrawled || 0, generatedAt: auditResults.auditedAt },
+      traceability: [],
+    };
+  }
+  
+  if (mapping.length === 0) {
+    console.warn('No assessment guidelines loaded. Using default empty response.');
+    // Return a minimal valid response instead of throwing
+    return {
+      url: auditResults.url,
+      date: new Date(auditResults.auditedAt).toLocaleString(),
+      webPresence: { stage1: 0, stage2: 0, stage3: 0, stage4: 0, total: 0, legend: { 0: { label: 'No Data', color: '#999' }, 1: { label: 'Pass', color: '#28a745' }, 2: { label: 'Partial', color: '#fd7e14' }, 3: { label: 'Fail', color: '#f8d7da' } } },
+      webUsability: { accessibility: 0, identity: 0, navigation: 0, content: 0, total: 0 },
+      categories: [],
+      methodology: { mappedGuidelines: 0, evaluatedGuidelines: 0, coveragePercent: 0, pagesCrawled: auditResults?.crawlSummary?.pagesCrawled || 0, generatedAt: auditResults.auditedAt },
+      traceability: [],
+    };
+  }
+  
   const checkIndex = new Map((auditResults.checks || []).map((check) => [check.key, check]));
   const checks = auditResults.checks || [];
+
+  // DEBUG: Log audit context
+  const checkKeys = new Set(checks.map(c => c.key));
+  console.log(`[buildUiAuditSummary] Audit for ${auditResults.url}:`);
+  console.log(`  Total checks generated: ${checks.length}`);
+  console.log(`  Assessment mapping rows: ${mapping.length}`);
 
   // Group mapping rows by form and stage for dynamic scoring
   const mappingByFormAndStage = new Map();
@@ -356,14 +509,27 @@ async function buildUiAuditSummary(auditResults) {
     .filter(m => m.assessmentForm?.includes('Web Presence') && m.assessmentStage?.includes('Stage 4'))
     .map(m => m.key);
 
-  const stage1 = percentFromChecks(checksByKeys(checkIndex, stage1Keys));
-  const stage2 = percentFromChecks(checksByKeys(checkIndex, stage2Keys));
-  const stage3 = percentFromChecks(checksByKeys(checkIndex, stage3Keys));
-  const stage4 = percentFromChecks(checksByKeys(checkIndex, stage4Keys));
+  // DEBUG: Log stage key matching
+  const stage1Matches = checksByKeys(checkIndex, stage1Keys);
+  const stage2Matches = checksByKeys(checkIndex, stage2Keys);
+  const stage3Matches = checksByKeys(checkIndex, stage3Keys);
+  const stage4Matches = checksByKeys(checkIndex, stage4Keys);
+
+  console.log(`  Stage 1: ${stage1Keys.length} mapped keys, ${stage1Matches.length} found in audit, ${stage1Matches.filter(c => c.status === 'Pass').length} passing`);
+  console.log(`  Stage 2: ${stage2Keys.length} mapped keys, ${stage2Matches.length} found in audit, ${stage2Matches.filter(c => c.status === 'Pass').length} passing`);
+  console.log(`  Stage 3: ${stage3Keys.length} mapped keys, ${stage3Matches.length} found in audit, ${stage3Matches.filter(c => c.status === 'Pass').length} passing`);
+  console.log(`  Stage 4: ${stage4Keys.length} mapped keys, ${stage4Matches.length} found in audit, ${stage4Matches.filter(c => c.status === 'Pass').length} passing`);
+
+  const stage1 = percentFromChecks(stage1Matches);
+  const stage2 = percentFromChecks(stage2Matches);
+  const stage3 = percentFromChecks(stage3Matches);
+  const stage4 = percentFromChecks(stage4Matches);
 
   const webPresenceTotal = stage1Keys.length > 0 || stage2Keys.length > 0 || stage3Keys.length > 0 || stage4Keys.length > 0
     ? Math.round(([stage1, stage2, stage3, stage4].reduce((a, b) => a + b, 0) / 4))
     : 0;
+
+  console.log(`  Web Presence Scores: S1=${stage1}% S2=${stage2}% S3=${stage3}% S4=${stage4}% Avg=${webPresenceTotal}%`);
 
   // Calculate Web Usability scores by category (Accessibility, Identity, Navigation, Content)
   const accessibilityKeys = mapping
@@ -390,6 +556,10 @@ async function buildUiAuditSummary(auditResults) {
   const webUsabilityTotal = accessibilityKeys.length > 0 || identityKeys.length > 0 || navigationKeys.length > 0 || contentKeys.length > 0
     ? Math.round(([accessibility, identity, navigation, content].reduce((a, b) => a + b, 0) / 4))
     : 0;
+
+  console.log(`  Web Usability Scores: A11y=${accessibility}% Identity=${identity}% Nav=${navigation}% Content=${content}% Avg=${webUsabilityTotal}%`);
+  const overallScore = (webPresenceTotal + webUsabilityTotal) / 2;
+  console.log(`  Overall Score: ${Math.round(overallScore)}%\n`);
 
   const categories = buildOrderedCategories(mapping, checkIndex);
 
@@ -461,7 +631,14 @@ async function buildUiAuditSummary(auditResults) {
 }
 
 async function generateAuditReportPdf(auditResults) {
-  const mapping = await loadAssessmentMapping();
+  let mapping = await loadAssessmentMapping();
+  
+  // Defensive check - if mapping is invalid, just use an empty array
+  if (!Array.isArray(mapping)) {
+    console.warn('generateAuditReportPdf: mapping is not an array, using empty mapping');
+    mapping = [];
+  }
+  
   const checkIndex = new Map((auditResults.checks || []).map((check) => [check.key, check]));
 
   return new Promise((resolve, reject) => {
@@ -550,8 +727,15 @@ async function generateAuditReportPdf(auditResults) {
 }
 
 async function generateAuditReport(auditResults) {
-  const mapping = await loadAssessmentMapping();
-  const checkIndex = new Map(auditResults.checks.map((check) => [check.key, check]));
+  let mapping = await loadAssessmentMapping();
+  
+  // Defensive check - if mapping is invalid, just use an empty array
+  if (!Array.isArray(mapping)) {
+    console.warn('generateAuditReport: mapping is not an array, using empty mapping');
+    mapping = [];
+  }
+  
+  const checkIndex = new Map((auditResults.checks || []).map((check) => [check.key, check]));
 
   const workbook = await loadOrCreateTemplateWorkbook();
   workbook.creator = 'GWT Audit Buddy';

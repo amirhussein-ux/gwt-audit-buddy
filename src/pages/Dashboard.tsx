@@ -1,24 +1,28 @@
-import { useState, useCallback, useEffect } from "react";
-import { Shield, LogOut, History, PlusCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
-import AuditInput from "@/components/AuditInput";
-import AuditProgress, { type AuditStep } from "@/components/AuditProgress";
-import AuditResults, { type AuditResultData } from "@/components/AuditResults";
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MaturityRadarChart } from '@/components/dashboard/MaturityRadarChart';
+import { ComplianceTrendChart } from '@/components/dashboard/ComplianceTrendChart';
+import { AgencyLeaderboard } from '@/components/dashboard/AgencyLeaderboard';
+import { CriticalAlertsTable } from '@/components/dashboard/CriticalAlertsTable';
+import { AuditSummaryReport } from '@/components/AuditSummaryReport';
+import AuditInput from '@/components/AuditInput';
+import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
 
-const AUDIT_STEPS: Omit<AuditStep, "status">[] = [
-  { id: "fetch", label: "Fetching page content" },
-  { id: "pst", label: "Checking Philippine Standard Time (PST)" },
-  { id: "transparency", label: "Scanning for Transparency Seal" },
-  { id: "citizens", label: "Checking Citizen's Charter" },
-  { id: "masthead", label: "Verifying masthead links (About Us, Contact Us, Home)" },
-  { id: "loadtime", label: "Measuring website load time" },
-  { id: "alttags", label: "Inspecting image ALT tags" },
-  { id: "urls", label: "Validating descriptive URLs" },
-  { id: "fonts", label: "Checking font sizes (12pt–14pt)" },
-  { id: "sns", label: "Validating Social Networking Site links" },
-  { id: "presence", label: "Scoring Web Presence stages" },
-  { id: "report", label: "Generating audit report" },
+const AUDIT_STEPS: Omit<AuditProgressStep, 'status'>[] = [
+  { id: 'fetch', label: 'Fetching page content' },
+  { id: 'pst', label: 'Checking Philippine Standard Time (PST)' },
+  { id: 'transparency', label: 'Scanning for Transparency Seal' },
+  { id: 'citizens', label: "Checking Citizen's Charter" },
+  { id: 'masthead', label: 'Verifying masthead links (About Us, Contact Us, Home)' },
+  { id: 'loadtime', label: 'Measuring website load time' },
+  { id: 'alttags', label: 'Inspecting image ALT tags' },
+  { id: 'urls', label: 'Validating descriptive URLs' },
+  { id: 'fonts', label: 'Checking font sizes (12pt–14pt)' },
+  { id: 'sns', label: 'Validating Social Networking Site links' },
+  { id: 'presence', label: 'Scoring Web Presence stages' },
+  { id: 'report', label: 'Generating audit report' },
 ];
 
 interface CrawlOptions {
@@ -27,308 +31,233 @@ interface CrawlOptions {
   concurrency: number;
 }
 
-interface DownloadPayload {
-  filename: string;
-  mimeType: string;
-  base64: string;
+interface AuditDataForDisplay {
+  auditUrl: string;
+  createdAt: string;
+  pst?: { found: boolean };
+  transparencySeal?: { found: boolean };
+  performance?: { loadTimeMs: number };
+  crawledPages?: Array<{ url: string }>;
 }
 
-interface AuditApiResponse {
-  auditResults?: {
-    checks?: {
-      key: string;
-      category: string;
-      item: string;
-      status: "Pass" | "Fail" | "N/A";
-      remarks: string;
-    }[];
-    crawlSummary?: {
-      pagesCrawled?: number;
-    };
-    auditedAt?: string;
-  };
-  uiReport: AuditResultData;
-  downloads: {
-    xlsx: DownloadPayload;
-    pdf: DownloadPayload;
-  };
-}
-
-function inferFallbackForm(key: string, category: string): string {
-  if (key.startsWith("a11y.") || key.startsWith("performance.")) {
-    return "Web Accessibility Assessment Form - Web Usability";
-  }
-
-  if (category.toLowerCase().includes("accessibility")) {
-    return "Web Accessibility Assessment Form - Web Usability";
-  }
-
-  return "Web Accessibility Assessment Form - Web Presence";
-}
-
-function inferFallbackSection(category: string): string {
-  if (category === "Technical Accessibility") return "Accessibility";
-  if (category === "Semantic Content") return "Content and Semantics";
-  if (category === "Presence & Identity") return "Presence and Identity";
-  return category || "General";
-}
-
-function inferFallbackStage(key: string): string {
-  if (key.startsWith("presence.") || key.startsWith("navigation.")) {
-    return "Stage 1 - Emerging Web Presence";
-  }
-
-  if (key.startsWith("semantic.") || key.startsWith("error.")) {
-    return "Stage 2 - Enhanced Web Presence";
-  }
-
-  return "Usability";
-}
-
-function withTransparencyFallback(payload: AuditApiResponse): AuditResultData {
-  const report = payload.uiReport;
-  if (report.traceability && report.traceability.length > 0) {
-    return report;
-  }
-
-  const checks = payload.auditResults?.checks || [];
-  const traceability = checks.map((check, index) => ({
-    rowNo: String(index + 1),
-    key: check.key,
-    guideline: check.item,
-    category: check.category,
-    assessmentForm: inferFallbackForm(check.key, check.category),
-    assessmentStage: inferFallbackStage(check.key),
-    assessmentSection: inferFallbackSection(check.category),
-    automationMethod: "Legacy response fallback from audit checks",
-    status: check.status,
-    evidence: check.remarks || "No evidence text provided.",
-  }));
-
-  if (traceability.length === 0) {
-    return report;
-  }
-
-  const evaluatedGuidelines = traceability.filter((row) => row.status !== "N/A").length;
-  return {
-    ...report,
-    methodology: report.methodology || {
-      mappedGuidelines: traceability.length,
-      evaluatedGuidelines,
-      coveragePercent: Math.round((evaluatedGuidelines / traceability.length) * 100),
-      pagesCrawled: payload.auditResults?.crawlSummary?.pagesCrawled || 0,
-      generatedAt: payload.auditResults?.auditedAt || new Date().toISOString(),
-    },
-    traceability,
-  };
-}
-
-function getAuditApiBase() {
-  return (import.meta.env.VITE_AUDIT_API_BASE as string | undefined) || "http://localhost:4000";
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(objectUrl);
-}
-
-function decodeBase64(base64: string): Uint8Array {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function downloadBase64File(file: DownloadPayload) {
-  const bytes = decodeBase64(file.base64);
-  const blob = new Blob([bytes], { type: file.mimeType });
-  downloadBlob(blob, file.filename);
-}
-
-const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState<"audit" | "history">("audit");
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [steps, setSteps] = useState<AuditStep[]>([]);
-  const [results, setResults] = useState<AuditResultData | null>(null);
-  const [downloads, setDownloads] = useState<AuditApiResponse["downloads"] | null>(null);
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { token } = useAuth();
+  const [isRunning, setIsRunning] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [lastAudit, setLastAudit] = useState<AuditDataForDisplay | null>(null);
+  const [steps, setSteps] = useState<AuditProgressStep[]>(
+    AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' }))
+  );
 
-  const runAudit = useCallback(async (type: "url" | "file", data: string | File, options?: CrawlOptions) => {
-    setIsAuditing(true);
-    setResults(null);
-    setDownloads(null);
-    setAuditError(null);
-    const initialSteps = AUDIT_STEPS.map((s) => ({ ...s, status: "pending" as const }));
-    setSteps(initialSteps);
-
-    let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep >= AUDIT_STEPS.length - 1) {
-        return;
+  // Check for recent audit result in localStorage
+  useEffect(() => {
+    const savedAudit = localStorage.getItem('lastAuditResult');
+    if (savedAudit && location.pathname === '/dashboard') {
+      try {
+        setLastAudit(JSON.parse(savedAudit));
+      } catch (e) {
+        console.error('Failed to parse saved audit:', e);
       }
-      setSteps((prev) =>
-        prev.map((s, i) => ({
-          ...s,
-          status: i < currentStep ? "done" : i === currentStep ? "running" : "pending",
-        }))
-      );
-      currentStep++;
-    }, 600);
+    }
+  }, [location.pathname]);
+
+  const handleAuditStart = async (type: "url" | "file", data: string | File, options?: CrawlOptions) => {
+    // Only handle URL audits for now
+    if (type !== "url" || typeof data !== "string") {
+      setAuditError("Only URL audits are supported");
+      console.error("Only URL audits are supported");
+      return;
+    }
+
+    const url = data;
+    setAuditError(null);
+    setIsRunning(true);
+    setSteps((prev) => prev.map((s) => ({ ...s, status: s.id === 'fetch' ? 'running' : 'pending' })));
 
     try {
-      if (type === "url" && typeof data === "string") {
-        const response = await fetch(`${getAuditApiBase()}/api/audit`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: data,
-            maxPages: options?.maxPages,
-            maxDepth: options?.maxDepth,
-            concurrency: options?.concurrency,
-          }),
-        });
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      console.log('[Dashboard] Starting audit for:', url);
+      
+      const response = await fetch(`${API_BASE}/audit`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          url, 
+          maxPages: options?.maxPages || 20,
+          maxDepth: options?.maxDepth || 3,
+          concurrency: options?.concurrency || 3,
+        }),
+      });
 
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(payload?.error || "Audit request failed.");
-        }
-
-        const payload = (await response.json()) as AuditApiResponse;
-        setResults(withTransparencyFallback(payload));
-        setDownloads(payload.downloads);
-      } else {
-        throw new Error("HTML file audit is not enabled yet. Please run URL scan.");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `HTTP ${response.status}: Audit failed`);
       }
 
-      clearInterval(interval);
-      setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as const })));
-    } catch (error) {
-      clearInterval(interval);
-      setAuditError(error instanceof Error ? error.message : "Unexpected audit error.");
-      setSteps((prev) => {
-        const runningIndex = prev.findIndex((s) => s.status === "running");
-        const failedIndex = runningIndex >= 0 ? runningIndex : 0;
-        return prev.map((s, i) => ({
-          ...s,
-          status: i < failedIndex ? "done" : i === failedIndex ? "failed" : "pending",
-        }));
-      });
-    } finally {
-      setIsAuditing(false);
-    }
-  }, []);
+      const responseData = await response.json();
+      console.log('[Dashboard] Audit response:', responseData);
 
-  // Mark all as done when audit finishes
-  useEffect(() => {
-    if (!isAuditing && results) {
-      setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as const })));
+      // Audit is now in_progress mode
+      // Mark initial steps as complete
+      setSteps((prev) => prev.map((s) => (
+        s.id === 'fetch' ? { ...s, status: 'done' } : s
+      )));
+
+      // Poll for completion before redirecting
+      if (responseData.auditLogId) {
+        console.log('[Dashboard] Polling for audit completion:', responseData.auditLogId);
+        
+        // Poll until audit has sufficient data (50+ checks or uiReport with scores)
+        let auditComplete = false;
+        let pollCount = 0;
+        const maxPolls = 120; // ~4 minutes max wait (2s * 120)
+        
+        while (!auditComplete && pollCount < maxPolls) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+          pollCount++;
+          
+          try {
+            const checkResponse = await fetch(`${API_BASE}/audit/${responseData.auditLogId}`, {
+              headers: { 'Authorization': `Bearer ${token}` },
+            });
+            
+            if (checkResponse.ok) {
+              const auditData = await checkResponse.json();
+              const checksCount = auditData.audit?.auditResults?.checks?.length || 0;
+              const webPresenceStage1 = auditData.uiReport?.webPresence?.stage1 || 0;
+              console.log(`[Dashboard] Poll ${pollCount}: checksCount=${checksCount}, webPresenceStage1=${webPresenceStage1}%`);
+              
+              // Audit is complete when we have checks and uiReport with non-zero scores
+              if (checksCount >= 50 && webPresenceStage1 > 0) {
+                auditComplete = true;
+                console.log('[Dashboard] Audit complete! Data is ready.');
+              }
+            }
+          } catch (pollError) {
+            console.error('[Dashboard] Poll error:', pollError);
+            // Continue polling even if one poll fails
+          }
+        }
+        
+        if (auditComplete) {
+          console.log('[Dashboard] Redirecting to audit detail:', responseData.auditLogId);
+          navigate(`/audit/${responseData.auditLogId}`);
+          setIsRunning(false);
+        } else {
+          throw new Error('Audit took too long to complete. Please refresh the page.');
+        }
+      } else {
+        throw new Error('No audit ID returned from server');
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('[Dashboard] Audit error:', errorMsg);
+      setAuditError(errorMsg);
+      setSteps((prev) =>
+        prev.map((s) => (s.status === 'running' ? { ...s, status: 'failed' } : s))
+      );
+      setIsRunning(false);
     }
-  }, [isAuditing, results]);
+  };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Top bar */}
-      <nav className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
-        <div className="container mx-auto flex h-14 items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2">
-            <Shield className="h-6 w-6 text-primary" />
-            <span className="font-display text-lg font-bold text-foreground">GWT Auditor</span>
-          </Link>
-          <Link to="/">
-            <Button variant="ghost" size="sm" className="gap-2">
-              <LogOut className="h-4 w-4" />
-              Sign Out
-            </Button>
-          </Link>
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <h1 className="text-2xl font-bold text-slate-900">MASID Dashboard</h1>
+          <p className="text-sm text-slate-600">
+            Monitoring and Automated Standards Inspection Dashboard
+          </p>
         </div>
-      </nav>
+      </header>
 
-      <div className="container mx-auto px-4 py-8">
-        {/* Tab header */}
-        <div className="flex items-center gap-4 mb-8">
-          <button
-            onClick={() => setActiveTab("audit")}
-            className={`flex items-center gap-2 pb-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "audit"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <PlusCircle className="h-4 w-4" />
-            New Audit
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`flex items-center gap-2 pb-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "history"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <History className="h-4 w-4" />
-            History
-          </button>
-        </div>
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        {/* New Audit Form (always displayed) */}
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle>Run New Audit</CardTitle>
+            <CardDescription>
+              Enter a government agency website URL to audit compliance
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {auditError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800"><strong>Error:</strong> {auditError}</p>
+              </div>
+            )}
+            {!isRunning ? (
+              <AuditInput onStartAudit={handleAuditStart} isAuditing={isRunning} />
+            ) : (
+              <div className="space-y-4">
+                <AuditProgress steps={steps} isVisible={isRunning} />
+                <p className="text-sm text-slate-600 text-center">
+                  Audit in progress... You will be redirected to the results page when complete.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        {activeTab === "audit" ? (
-          <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-            <div className="space-y-6">
-              <AuditInput onStartAudit={runAudit} isAuditing={isAuditing} />
-              <AuditProgress steps={steps} isVisible={steps.length > 0} />
-            </div>
-            <div>
-              {results ? (
-                <div className="space-y-4">
-                  {downloads ? (
-                    <div className="flex flex-wrap gap-3">
-                      <Button variant="outline" onClick={() => downloadBase64File(downloads.xlsx)}>
-                        Download XLSX Report
-                      </Button>
-                      <Button variant="outline" onClick={() => downloadBase64File(downloads.pdf)}>
-                        Download PDF Report
-                      </Button>
-                    </div>
-                  ) : null}
-                  <AuditResults data={results} />
-                </div>
-              ) : auditError ? (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
-                  <p className="font-semibold">Audit failed</p>
-                  <p className="mt-1">{auditError}</p>
-                </div>
-              ) : !isAuditing ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border py-20 text-center">
-                  <Shield className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                  <h3 className="font-display text-lg font-semibold text-muted-foreground">No audit yet</h3>
-                  <p className="mt-1 text-sm text-muted-foreground/70">
-                    Enter a URL or upload an HTML file to start scanning.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-border bg-card p-8 shadow-card text-center">
-            <History className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="font-display text-lg font-semibold text-muted-foreground">No audit history</h3>
-            <p className="mt-1 text-sm text-muted-foreground/70">
-              Your previous audit results and reports will appear here once Lovable Cloud is enabled.
-            </p>
-          </div>
+        {/* Audit Summary Report - Only show if there's a recent audit result */}
+        {lastAudit && (
+          <AuditSummaryReport 
+            audit={lastAudit}
+            onDownloadExcel={() => alert('Download Excel functionality coming soon')}
+            onDownloadPdf={() => alert('Download PDF functionality coming soon')}
+          />
         )}
+
+        {/* Main Dashboard Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Maturity Index (spans 1 column) */}
+          <MaturityRadarChart />
+
+          {/* Agency Leaderboard (spans 1 column) */}
+          <AgencyLeaderboard />
+
+          {/* Compliance Trend (spans 2 columns) */}
+          <ComplianceTrendChart />
+        </div>
+
+        {/* Critical Alerts (spans full width) */}
+        <div className="grid grid-cols-1">
+          <CriticalAlertsTable />
+        </div>
+
+        {/* Quick Stats */}
+        <Card>
+          <CardHeader>
+            <CardTitle>System Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-slate-600">Total Agencies</p>
+                <p className="text-2xl font-bold text-blue-600">--</p>
+              </div>
+              <div className="p-4 bg-green-50 rounded-lg">
+                <p className="text-sm text-slate-600">Avg Compliance</p>
+                <p className="text-2xl font-bold text-green-600">--</p>
+              </div>
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <p className="text-sm text-slate-600">Total Audits</p>
+                <p className="text-2xl font-bold text-purple-600">--</p>
+              </div>
+              <div className="p-4 bg-orange-50 rounded-lg">
+                <p className="text-sm text-slate-600">Critical Alerts</p>
+                <p className="text-2xl font-bold text-orange-600">--</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
-};
-
-export default Dashboard;
+}

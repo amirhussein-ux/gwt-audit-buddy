@@ -11,7 +11,7 @@ console.log('buildMissingContentChecks:', typeof checks.buildMissingContentCheck
 console.log('buildMissingParticipationChecks:', typeof checks.buildMissingParticipationChecks);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
   try {

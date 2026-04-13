@@ -37,7 +37,26 @@ const BROWSER_CONTEXT_OPTIONS = {
  *   await shared.close();
  */
 async function createSharedContext() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--disable-default-apps',
+      '--disable-extensions',
+      '--disable-sync',
+      '--disable-component-extensions-with-background-pages',
+      '--disable-background-networking',
+      '--disable-component-update',
+      '--no-default-browser-check',
+      '--disable-plugins',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--no-pings',
+      '--disable-popup-blocking',
+      '--disable-prompt-on-repost',
+      '--no-proxy-server',
+    ],
+  });
   const context = await browser.newContext(BROWSER_CONTEXT_OPTIONS);
 
   await context.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
@@ -119,7 +138,27 @@ async function scrapePageWithContext(context, targetUrl, options = {}) {
  */
 async function scrapePage(targetUrl, options = {}) {
   const timeoutMs = options.timeoutMs ?? 25000;
-  const browser = await chromium.launch({ headless: true });
+  
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--disable-default-apps',
+      '--disable-extensions',
+      '--disable-sync',
+      '--disable-component-extensions-with-background-pages',
+      '--disable-background-networking',
+      '--disable-component-update',
+      '--no-default-browser-check',
+      '--disable-plugins',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--no-pings',
+      '--disable-popup-blocking',
+      '--disable-prompt-on-repost',
+      '--no-proxy-server',
+    ],
+  });
   const context = await browser.newContext(BROWSER_CONTEXT_OPTIONS);
 
   await context.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
