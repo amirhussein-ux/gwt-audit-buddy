@@ -55,6 +55,12 @@ export default function Dashboard() {
   const [steps, setSteps] = useState<AuditProgressStep[]>(
     AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' }))
   );
+  const [dashboardStats, setDashboardStats] = useState({
+    totalAgencies: 0,
+    averageCompliance: 0,
+    totalAudits: 0,
+    statusDistribution: { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
+  });
 
   // Check for recent audit result and active audit in progress
   useEffect(() => {
@@ -233,9 +239,9 @@ export default function Dashboard() {
             
             setSteps((prev) => {
               const updated = prev.map((s, idx) => {
-                if (idx < stepIndex) return { ...s, status: 'done' };
-                if (idx === stepIndex) return { ...s, status: 'running' };
-                return { ...s, status: 'pending' };
+                if (idx < stepIndex) return { ...s, status: 'done' as const };
+                if (idx === stepIndex) return { ...s, status: 'running' as const };
+                return { ...s, status: 'pending' as const };
               });
               // Save steps to localStorage
               localStorage.setItem('auditSteps', JSON.stringify(updated));
@@ -292,7 +298,7 @@ export default function Dashboard() {
 
   // Resume polling if audit is already in progress when component mounts
   useEffect(() => {
-    if (activeAuditId && isRunning && token) {
+    if (activeAuditId && token) {
       console.log('[Dashboard] Resuming poll for active audit:', activeAuditId);
       const resumePolling = async () => {
         try {
@@ -314,7 +320,40 @@ export default function Dashboard() {
       };
       resumePolling();
     }
-  }, [activeAuditId, token]);
+  }, [activeAuditId, token, isRunning]);
+
+  // Fetch dashboard summary stats
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchDashboardStats = async () => {
+      try {
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+        const response = await fetch(`${API_BASE}/dashboard/summary`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setDashboardStats({
+            totalAgencies: data.totalAgencies || 0,
+            averageCompliance: parseFloat(data.averageCompliance) || 0,
+            totalAudits: data.totalAudits || 0,
+            statusDistribution: data.statusDistribution || { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
+          });
+        }
+      } catch (error) {
+        console.error('[Dashboard] Failed to fetch summary stats:', error);
+      }
+    };
+
+    // Fetch immediately on mount
+    fetchDashboardStats();
+
+    // Refetch every 30 seconds
+    const interval = setInterval(fetchDashboardStats, 30000);
+    return () => clearInterval(interval);
+  }, [token]);
 
   // Handle completion modal actions
   const handleViewResults = () => {
@@ -377,6 +416,33 @@ export default function Dashboard() {
       </header>
 
       <div className="container mx-auto px-4 py-8 space-y-8">
+        {/* Quick Stats / System Overview */}
+        <Card>
+          <CardHeader>
+            <CardTitle>System Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-slate-600">Total Agencies</p>
+                <p className="text-2xl font-bold text-blue-600">{dashboardStats.totalAgencies}</p>
+              </div>
+              <div className="p-4 bg-green-50 rounded-lg">
+                <p className="text-sm text-slate-600">Avg Compliance</p>
+                <p className="text-2xl font-bold text-green-600">{dashboardStats.averageCompliance}%</p>
+              </div>
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <p className="text-sm text-slate-600">Total Audits</p>
+                <p className="text-2xl font-bold text-purple-600">{dashboardStats.totalAudits}</p>
+              </div>
+              <div className="p-4 bg-orange-50 rounded-lg">
+                <p className="text-sm text-slate-600">Critical Alerts</p>
+                <p className="text-2xl font-bold text-orange-600">{dashboardStats.statusDistribution.critical}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* New Audit Form (always displayed) */}
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
@@ -404,56 +470,19 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Audit Summary Report - Only show if there's a recent audit result */}
-        {lastAudit && (
-          <AuditSummaryReport 
-            audit={lastAudit}
-          />
-        )}
-
-        {/* Main Dashboard Grid */}
+        {/* Main Dashboard Grid - Compliance Trend (left 2 cols) + Maturity Index (right 1 col) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Maturity Index (spans 1 column) */}
+          {/* Compliance Trend (spans 2 columns on left) */}
+          <div className="lg:col-span-2">
+            <ComplianceTrendChart />
+          </div>
+
+          {/* Maturity Index (spans 1 column on right) */}
           <MaturityRadarChart />
-
-          {/* Agency Leaderboard (spans 1 column) */}
-          <AgencyLeaderboard />
-
-          {/* Compliance Trend (spans 2 columns) */}
-          <ComplianceTrendChart />
         </div>
 
-        {/* Critical Alerts (spans full width) */}
-        <div className="grid grid-cols-1">
-          <CriticalAlertsTable />
-        </div>
-
-        {/* Quick Stats */}
-        <Card>
-          <CardHeader>
-            <CardTitle>System Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-slate-600">Total Agencies</p>
-                <p className="text-2xl font-bold text-blue-600">--</p>
-              </div>
-              <div className="p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-slate-600">Avg Compliance</p>
-                <p className="text-2xl font-bold text-green-600">--</p>
-              </div>
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <p className="text-sm text-slate-600">Total Audits</p>
-                <p className="text-2xl font-bold text-purple-600">--</p>
-              </div>
-              <div className="p-4 bg-orange-50 rounded-lg">
-                <p className="text-sm text-slate-600">Critical Alerts</p>
-                <p className="text-2xl font-bold text-orange-600">--</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Agency Leaderboard (full width) */}
+        <AgencyLeaderboard />
       </div>
     </div>
   );

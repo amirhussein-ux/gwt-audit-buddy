@@ -1,3 +1,8 @@
+const Fuse = require('fuse.js');
+
+// Fuzzy matching threshold (0-1): 0.7 = 70% similarity required
+const FUZZY_THRESHOLD = 0.7;
+
 async function ensureNetworkIdle(page, timeoutMs = 5000) {
   try {
     await page.waitForLoadState('networkidle', { timeout: timeoutMs });
@@ -204,10 +209,10 @@ async function detectNavLinkByIntent(page, intent) {
   await ensureNetworkIdle(page);
 
   const patterns = {
-    // Flexible pattern matching (no exact strings): covers “About PSA”, “Profile”, etc.
-    // Updated to prefer strings starting with "About " or contain common LGU naming
-    about: /^about\s+|profile|history|mandate|background/i,
-    contact: /contact|get\s+in\s+touch|reach\s+us|directory|inquiries|help|support|offices?/i,
+    // Permissive patterns to catch all variations: "About X", "Profile", etc.
+    // Use word boundaries or simple substring matching
+    about: /\babout\b|\bprofile\b|\bhistory\b|\bmandate\b|\bbackground\b|\bwho\s+we\s+are\b|\bagency\s+info\b/i,
+    contact: /\bcontact\b|\bget\s+in\s+touch\b|\breach\s+us\b|\bdirectory\b|\binquiries\b|\bhelp\b|\bsupport\b|\boffices?\b/i,
   };
 
   const hrefPatterns = {
@@ -223,7 +228,9 @@ async function detectNavLinkByIntent(page, intent) {
   }
 
   const areas = [
-    'header a, nav a, [role="navigation"] a, .nav a, .menu a',
+    // Primary: nav/header areas
+    'header a, nav a, [role="navigation"] a, .nav a, .menu a, .navbar a, .header a, .topbar a, .top-nav a, .main-nav a',
+    // Footer (lower priority)
     'footer a, [role="contentinfo"] a, .footer a',
   ];
 
@@ -303,6 +310,55 @@ async function detectNavLinkByIntent(page, intent) {
     }
   }
 
+  // FALLBACK: Fuzzy matching for typo-heavy or non-standard naming
+  // Collect all link texts and try fuzzy matching against common intent keywords
+  try {
+    const fuzzyTargets = {
+      about: ['about', 'about us', 'profile', 'company profile', 'organization', 'who we are', 'agency info', 'our agency', 'mandate', 'vision', 'mission'],
+      contact: ['contact', 'contact us', 'get in touch', 'reach us', 'directory', 'inquiries', 'help', 'support', 'office', 'offices', 'location', 'locations'],
+    };
+
+    const targets = fuzzyTargets[intent] || [];
+    if (targets.length === 0) {
+      return { found: false, reason: 'none' };
+    }
+
+    // Gather candidate text from multiple sources: links, buttons, divs, spans
+    // This catches navigation elements that might not be standard <a> tags
+    const allElements = page.locator('a, button, [role="button"], [role="link"], [role="menuitem"], nav *, .nav *, .menu *');
+    const allCount = await allElements.count().catch(() => 0);
+    const allLimit = Math.min(allCount, 500); // Increased from 300 to 500
+    const candidates = [];
+
+    for (let i = 0; i < allLimit; i += 1) {
+      const text = await allElements.nth(i).textContent().catch(() => '');
+      if (text && String(text).trim().length > 0) {
+        const trimmed = String(text).trim().toLowerCase();
+        // Avoid duplicate and overly long candidates
+        if (!candidates.includes(trimmed) && trimmed.length < 200) {
+          candidates.push(trimmed);
+        }
+      }
+    }
+
+    debugLog(`Fuzzy matching for "${intent}"`, { 
+      candidateCount: candidates.length, 
+      sampleCandidates: candidates.slice(0, 10) 
+    });
+
+    const fuzzyResult = fuzzyMatchAny(candidates, targets, FUZZY_THRESHOLD);
+    if (fuzzyResult && fuzzyResult.matched) {
+      debugLog(`Fuzzy match found for "${intent}"`, {
+        score: fuzzyResult.score.toFixed(3),
+        candidate: fuzzyResult.candidate,
+        bestMatch: fuzzyResult.bestMatch,
+      });
+      return { found: true, reason: 'fuzzy-match', score: fuzzyResult.score };
+    }
+  } catch (err) {
+    debugLog(`Fuzzy matching error: ${err.message}`, null);
+  }
+
   return { found: false, reason: 'none' };
 }
 
@@ -324,6 +380,138 @@ function debugLog(message, details) {
   }
 }
 
+/**
+ * Fuzzy match a candidate string against a list of target strings.
+ * Returns { matched: boolean, score: number (0-1), bestMatch: string }
+ * Uses Levenshtein distance via Fuse.js for typo tolerance.
+ */
+/**
+ * Calculate Levenshtein distance similarity (0-1, where 1 = identical).
+ */
+function levenshteinSimilarity(str1, str2) {
+  const s1 = (str1 || '').toLowerCase();
+  const s2 = (str2 || '').toLowerCase();
+  
+  if (s1 === s2) return 1;
+  if (!s1 || !s2) return 0;
+  
+  const len1 = s1.length;
+  const len2 = s2.length;
+  const matrix = Array(len2 + 1).fill(null).map(() => Array(len1 + 1).fill(0));
+  
+  for (let i = 0; i <= len1; i++) matrix[0][i] = i;
+  for (let j = 0; j <= len2; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= len2; j++) {
+    for (let i = 1; i <= len1; i++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,      // insertion
+        matrix[j - 1][i] + 1,      // deletion
+        matrix[j - 1][i - 1] + cost // substitution
+      );
+    }
+  }
+  
+  const distance = matrix[len2][len1];
+  const maxLen = Math.max(len1, len2);
+  return 1 - (distance / maxLen);
+}
+
+/**
+ * Check if candidate contains or closely matches any target keyword.
+ * Uses multiple strategies: substring search, word matching, partial matching, and Levenshtein distance.
+ */
+function fuzzyMatchString(candidate, targets, threshold = FUZZY_THRESHOLD) {
+  if (!candidate || !targets || targets.length === 0) {
+    return { matched: false, score: 0, bestMatch: null };
+  }
+
+  const candLower = candidate.toLowerCase().trim();
+  const candWords = candLower.split(/\s+/); // Split into words
+  let bestScore = 0;
+  let bestMatch = null;
+
+  for (const target of targets) {
+    const targetLower = target.toLowerCase().trim();
+    const targetWords = targetLower.split(/\s+/);
+
+    // Strategy 1: Exact substring match (100%)
+    if (candLower.includes(targetLower)) {
+      bestScore = 1;
+      bestMatch = target;
+      break; // Can't do better than 100%
+    }
+
+    // Strategy 2: Check if any target word appears in candidate words (word-level match)
+    // E.g., "about" from ["about"] appears in "about pasig city".split() = ["about", "pasig", "city"]
+    for (const targetWord of targetWords) {
+      if (candWords.includes(targetWord)) {
+        bestScore = Math.max(bestScore, 0.95); // Near-perfect match for word match
+        bestMatch = target;
+        break; // Found a word match for this target, move to next target
+      }
+    }
+    if (bestScore >= 0.95) break; // Can't improve further
+
+    // Strategy 3: Check if target is a prefix of any candidate word
+    // E.g., "about pasig city" contains "about" as prefix of first word
+    for (const candWord of candWords) {
+      if (candWord.startsWith(targetWords[0])) {
+        bestScore = Math.max(bestScore, 0.9);
+        bestMatch = target;
+        break;
+      }
+    }
+    if (bestScore >= 0.9) break;
+
+    // Strategy 4: Levenshtein distance for typo tolerance
+    const score = levenshteinSimilarity(candLower, targetLower);
+    // Also check word-level Levenshtein (in case person typed "Abot" instead of "About")
+    let bestWordScore = score;
+    for (const candWord of candWords) {
+      for (const targetWord of targetWords) {
+        const wordScore = levenshteinSimilarity(candWord, targetWord);
+        bestWordScore = Math.max(bestWordScore, wordScore);
+      }
+    }
+
+    if (bestWordScore > bestScore) {
+      bestScore = bestWordScore;
+      bestMatch = target;
+    }
+  }
+
+  return {
+    matched: bestScore >= threshold,
+    score: bestScore,
+    bestMatch,
+  };
+}
+
+/**
+ * Fuzzy match multiple candidates against multiple targets.
+ * Useful for scanning a list of link texts/hrefs.
+ * Returns first match above threshold, or null.
+ */
+function fuzzyMatchAny(candidates, targets, threshold = FUZZY_THRESHOLD) {
+  if (!candidates || !targets) return null;
+
+  for (const candidate of candidates) {
+    const result = fuzzyMatchString(candidate, targets, threshold);
+    if (result.matched) {
+      return {
+        matched: true,
+        score: result.score,
+        candidate,
+        bestMatch: result.bestMatch,
+      };
+    }
+  }
+
+  return null;
+}
+
 module.exports = {
   ensureNetworkIdle,
   isHomepageHrefLoose,
@@ -331,5 +519,7 @@ module.exports = {
   detectHomeLink,
   detectLogoLinksHome,
   detectNavLinkByIntent,
+  fuzzyMatchString,
+  fuzzyMatchAny,
   debugLog,
 };

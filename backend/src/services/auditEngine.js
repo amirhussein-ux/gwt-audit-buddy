@@ -17,6 +17,7 @@ const {
   normalizeCheck,
   buildContentAccessibilityChecks,
   buildNavigationStructureChecks,
+  buildTopNavigationChecks,
   buildBrandIdentityChecks,
   buildCompanyInfoChecks,
   buildContactInfoChecks,
@@ -173,6 +174,7 @@ async function auditOnePage(page, target, origin, homepageUrl) {
     const checkBuilders = [
       { name: 'contentAccessibility', builder: () => buildContentAccessibilityChecks(page) },
       { name: 'navigationStructure', builder: () => buildNavigationStructureChecks(page, origin) },
+      { name: 'topNavigation', builder: () => buildTopNavigationChecks(page) },
       { name: 'brandIdentity', builder: () => buildBrandIdentityChecks(page) },
       { name: 'companyInfo', builder: () => buildCompanyInfoChecks(page) },
       { name: 'contactInfo', builder: () => buildContactInfoChecks(page) },

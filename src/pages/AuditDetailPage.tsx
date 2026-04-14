@@ -133,8 +133,8 @@ export default function AuditDetailPage() {
   if (error || !data) {
     return (
       <div className="container mx-auto py-8">
-        <Button variant="outline" onClick={() => navigate('/dashboard')} className="mb-4">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+        <Button variant="outline" onClick={() => navigate('/results')} className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Results
         </Button>
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
@@ -231,8 +231,8 @@ export default function AuditDetailPage() {
     <div className="container mx-auto py-8 space-y-6" key={`audit-detail-${id}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+        <Button variant="outline" onClick={() => navigate('/results')}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Results
         </Button>
         <div className="text-right">
           <h1 className="text-2xl font-bold">{audit.auditUrl}</h1>
