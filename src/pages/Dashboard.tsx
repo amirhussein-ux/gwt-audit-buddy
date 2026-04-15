@@ -12,6 +12,22 @@ import AuditInput from '@/components/AuditInput';
 import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
 import { CheckCircle } from 'lucide-react';
 
+// Constants
+const DASHBOARD_CONFIG = {
+  STORAGE_KEYS: {
+    LAST_AUDIT_RESULT: 'lastAuditResult',
+    ACTIVE_AUDIT: 'activeAudit',
+    AUDIT_STEPS: 'auditSteps',
+    COMPLETED_AUDIT: 'completedAudit',
+  },
+  INITIAL_STATS: {
+    totalAgencies: 0,
+    averageCompliance: 0,
+    totalAudits: 0,
+    statusDistribution: { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
+  },
+};
+
 const AUDIT_STEPS: Omit<AuditProgressStep, 'status'>[] = [
   { id: 'fetch', label: 'Fetching page content' },
   { id: 'pst', label: 'Checking Philippine Standard Time (PST)' },
@@ -64,7 +80,7 @@ export default function Dashboard() {
 
   // Check for recent audit result and active audit in progress
   useEffect(() => {
-    const savedAudit = localStorage.getItem('lastAuditResult');
+    const savedAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT);
     if (savedAudit && location.pathname === '/dashboard') {
       try {
         setLastAudit(JSON.parse(savedAudit));
@@ -74,20 +90,20 @@ export default function Dashboard() {
     }
 
     // Check if there's an active audit in progress
-    const activeAudit = localStorage.getItem('activeAudit');
+    const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     if (activeAudit) {
       try {
         const auditData = JSON.parse(activeAudit);
         setActiveAuditId(auditData.auditLogId);
         setIsRunning(true);
         // Restore progress steps
-        const savedSteps = localStorage.getItem('auditSteps');
+        const savedSteps = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
         if (savedSteps) {
           setSteps(JSON.parse(savedSteps));
         }
       } catch (e) {
         console.error('Failed to parse active audit:', e);
-        localStorage.removeItem('activeAudit');
+        localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
       }
     }
   }, [location.pathname]);
@@ -108,7 +124,7 @@ export default function Dashboard() {
     
     // Also listen for storage changes from other tabs/windows
     const handleStorageChange = () => {
-      const completedAudit = localStorage.getItem('completedAudit');
+      const completedAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
       if (completedAudit) {
         try {
           const auditData = JSON.parse(completedAudit);
@@ -174,7 +190,7 @@ export default function Dashboard() {
       )));
 
       // Save active audit to localStorage so it persists across navigation
-      localStorage.setItem('activeAudit', JSON.stringify({
+      localStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT, JSON.stringify({
         auditLogId: responseData.auditLogId,
         startTime: Date.now(),
         url: url,
@@ -195,7 +211,7 @@ export default function Dashboard() {
         prev.map((s) => (s.status === 'running' ? { ...s, status: 'failed' } : s))
       );
       setIsRunning(false);
-      localStorage.removeItem('activeAudit');
+      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     }
   };
 
@@ -244,7 +260,7 @@ export default function Dashboard() {
                 return { ...s, status: 'pending' as const };
               });
               // Save steps to localStorage
-              localStorage.setItem('auditSteps', JSON.stringify(updated));
+              localStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS, JSON.stringify(updated));
               return updated;
             });
           }
@@ -282,14 +298,14 @@ export default function Dashboard() {
       }));
       
       // Save completed audit to localStorage to trigger modal in other tabs
-      localStorage.setItem('completedAudit', JSON.stringify({
+      localStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT, JSON.stringify({
         auditLogId: auditLogId,
         completedAt: Date.now(),
       }));
       
       // Clean up active audit data
-      localStorage.removeItem('activeAudit');
-      localStorage.removeItem('auditSteps');
+      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
       setIsRunning(false);
     } else {
       throw new Error(`Audit processing timed out after ${Math.round(elapsedTime / 1000)}s. Please try refreshing the page in a moment.`);
@@ -303,7 +319,7 @@ export default function Dashboard() {
       const resumePolling = async () => {
         try {
           // Get the original start time to calculate elapsed time correctly
-          const activeAudit = localStorage.getItem('activeAudit');
+          const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
           const originalStartTime = activeAudit ? JSON.parse(activeAudit).startTime : undefined;
           await pollAuditCompletion(activeAuditId, token, originalStartTime);
         } catch (error) {
@@ -314,8 +330,8 @@ export default function Dashboard() {
             prev.map((s) => (s.status === 'running' ? { ...s, status: 'failed' } : s))
           );
           setIsRunning(false);
-          localStorage.removeItem('activeAudit');
-          localStorage.removeItem('auditSteps');
+          localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+          localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
         }
       };
       resumePolling();
@@ -358,14 +374,14 @@ export default function Dashboard() {
   // Handle completion modal actions
   const handleViewResults = () => {
     if (completedAuditId) {
-      localStorage.removeItem('completedAudit');
+      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
       setShowCompletionModal(false);
       navigate(`/audit/${completedAuditId}`);
     }
   };
 
   const handleStayOnPage = () => {
-    localStorage.removeItem('completedAudit');
+    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
     setShowCompletionModal(false);
   };
 

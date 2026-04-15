@@ -1,23 +1,26 @@
 # Manual Pre-Made Account Setup
 
-Pre-made accounts are **manually added to MongoDB** rather than auto-seeded. This provides more control over account creation and follows the system's preference for explicit database management.
+⚠️ **SECURITY NOTICE**: Demo credentials are **NOT** stored in this file. Use setup scripts instead.
 
 ---
 
-## ⭐ Demo User (Easy Start)
+## Quick Start
 
-Use this account for quick navigation and testing:
+Use the automated setup scripts instead of manual insertion:
 
+```bash
+# Create pre-verified demo user with all required fields
+cd backend
+node seed.js
 ```
-Email: user@dict.gov.ph
-Password: Temporary123@
-```
 
-See [DEMO_USER.md](DEMO_USER.md) for quick setup instructions.
+This is **easier**, **more secure**, and **automatically handles password hashing**.
 
 ---
 
-## MongoDB Connection
+## MongoDB Connection (Manual Method)
+
+If you prefer manual setup, here are the connection options:
 
 ### Using MongoDB Compass (GUI)
 
@@ -25,7 +28,7 @@ See [DEMO_USER.md](DEMO_USER.md) for quick setup instructions.
 2. Connect to your MongoDB instance using `MONGODB_URI` from `.env`
 3. Navigate to: `gwt_audit_db` → `users` collection
 4. Click **INSERT DOCUMENT**
-5. Copy-paste the JSON document below for each account
+5. Enter user data (see template below)
 
 ### Using MongoDB Shell (CLI)
 
@@ -33,10 +36,10 @@ See [DEMO_USER.md](DEMO_USER.md) for quick setup instructions.
 # Connect to MongoDB
 mongosh "mongodb://your-connection-string/gwt_audit_db"
 
-# Then use the insertion commands in the sections below
+# Then create documents using the template below
 ```
 
-### Using Mongoose/Node.js
+### Using Node.js/Mongoose
 
 ```javascript
 const mongoose = require('mongoose');
@@ -45,59 +48,135 @@ const User = require('./src/models/User');
 await mongoose.connect(process.env.MONGODB_URI);
 
 const user = new User({
-  username: 'admin',
-  email: 'admin@dict.gov.ph',
-  hashedPassword: 'changeme123',
-  role: 'admin',
+  username: 'example_user',
+  email: 'user@dict.gov.ph',
+  hashedPassword: 'NEVER_HARDCODE_PASSWORDS',  // Will be hashed by pre-save middleware
+  role: 'auditor',
+  isActive: true,
 });
 
 await user.save();
-console.log('User created:', user);
+console.log('User created:', user._id);
 ```
 
 ---
 
-## Account Documents to Insert
+## User Document Template
 
-### ⭐ Demo User (For Navigation)
+When manually creating accounts, use this template structure:
 
-**MongoDB Compass**: Copy and insert this JSON
+### Basic Template
 
 ```json
 {
-  "username": "Amir Macakiling",
+  "username": "your_username",
   "email": "user@dict.gov.ph",
-  "hashedPassword": "Temporary123@",
-  "role": "admin",
+  "hashedPassword": "[YOUR_SECURE_PASSWORD]",
+  "role": "admin|auditor|viewer",
   "isActive": true,
-  "loginAttempts": 0,
-  "lockUntil": null,
-  "lastLogin": null
+  "isEmailVerified": true,
+  "createdAt": new Date(),
+  "updatedAt": new Date()
 }
 ```
 
-**MongoDB Shell**:
+### Complete Template (All Fields)
 
-```javascript
-db.users.insertOne({
-  "username": "Amir Macakiling",
+```json
+{
+  "username": "your_username",
   "email": "user@dict.gov.ph",
-  "hashedPassword": "Temporary123@",
+  "hashedPassword": "[YOUR_SECURE_PASSWORD]",
   "role": "admin",
   "isActive": true,
+  "isEmailVerified": true,
+  "emailVerificationToken": null,
+  "emailVerificationTokenExpires": null,
+  "passwordResetToken": null,
+  "passwordResetTokenExpires": null,
   "loginAttempts": 0,
   "lockUntil": null,
-  "lastLogin": null
-});
+  "lastLogin": null,
+  "createdAt": new Date(),
+  "updatedAt": new Date()
+}
 ```
-
-**Quick Reference**: See [DEMO_USER.md](DEMO_USER.md)
 
 ---
 
-### Admin Account 1
+## Creating Test Accounts
 
-**MongoDB Compass**: Copy and insert this JSON
+### Step 1: Generate Secure Password
+For testing, create a strong password:
+```bash
+node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+```
+
+### Step 2: Insert via MongoDB Compass
+
+1. Navigate to `gwt_audit_db` → `users` collection
+2. Click **INSERT DOCUMENT**
+3. Paste and modify the template above:
+   - Replace `your_username` with actual username
+   - Replace `[YOUR_SECURE_PASSWORD]` with your generated password
+   - Set `email` to unique value
+   - Set `role` appropriately
+
+### Step 3: Verify in Frontend
+
+- Restart backend: `npm start`
+- Navigate to login page
+- Try logging in with the email and password you set
+
+---
+
+## Role Reference
+
+| Role | Permissions |
+|------|------------|
+| `admin` | Full access - manage users, run audits, view all data |
+| `auditor` | Run audits, view results, download reports |
+| `viewer` | View-only access to audit results |
+
+---
+
+## ⚠️ Important Security Notes
+
+**Never:**
+- Hardcode passwords in documentation
+- Store credentials in version control
+- Share passwords via email or chat
+- Use weak/default passwords like `password123`
+
+**Always:**
+- Use strong, randomly generated passwords
+- Store credentials in environment variables
+- Change demo passwords immediately in production
+- Use the seed.js script for consistent setup
+
+---
+
+## Troubleshooting
+
+**Password not working?**
+- Verify the password during account creation
+- MongoDB doesn't auto-hash - the User model's pre-save middleware handles it
+- Check that `isEmailVerified: true` is set
+- Review backend logs for errors
+
+**Can't find users collection?**
+- Ensure you're in the correct database (`gwt_audit_db`)
+- Create the collection first if it doesn't exist: `db.createCollection('users')`
+
+**Need to change a password?**
+- For security, don't update `hashedPassword` directly
+- Delete the user and recreate with new password
+- Or use the password reset feature in the application
+
+---
+
+See [ACCOUNTS_QUICK_REF.md](ACCOUNTS_QUICK_REF.md) for role permissions.
+See [SECURITY_REFACTORING_COMPLETE.md](SECURITY_REFACTORING_COMPLETE.md) for security details.
 
 ```json
 {

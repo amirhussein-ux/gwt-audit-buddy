@@ -43,6 +43,18 @@ interface Statistics {
   insight: string;
 }
 
+// Constants
+const COMPLIANCE_TREND_CONFIG = {
+  ICON_SIZES: {
+    SMALL: 'h-4 w-4',
+    MEDIUM: 'h-5 w-5',
+  },
+  CHART_COLS: 'grid-cols-2 md:grid-cols-4',
+  LEGEND_COLS: 'grid-cols-3',
+  TREND_THRESHOLD_SIGNIFICANT: 10,
+  TREND_THRESHOLD_MINOR: 2,
+};
+
 const TIME_RANGES: Record<string, TimeRange> = {
   day: { label: 'Last Day', days: 1 },
   monthly: { label: 'Last Month', days: 30 },
@@ -50,20 +62,62 @@ const TIME_RANGES: Record<string, TimeRange> = {
   yearly: { label: 'Last Year', days: 365 },
 };
 
-// Status color mapping
-const getStatusColor = (score: number): { bg: string; text: string; status: string } => {
-  if (score >= 80) return { bg: 'bg-green-50', text: 'text-green-700', status: 'Excellent' };
-  if (score >= 50) return { bg: 'bg-yellow-50', text: 'text-yellow-700', status: 'Moderate' };
-  return { bg: 'bg-red-50', text: 'text-red-700', status: 'Needs Improvement' };
+const STATUS_COLORS_CONFIG = {
+  excellent: { bg: 'bg-green-50', text: 'text-green-700', status: 'Excellent', threshold: 80 },
+  moderate: { bg: 'bg-yellow-50', text: 'text-yellow-700', status: 'Moderate', threshold: 50 },
+  needsImprovement: { bg: 'bg-red-50', text: 'text-red-700', status: 'Needs Improvement', threshold: 0 },
 };
 
-// Format date to readable format (e.g., "Jan 15, 2026")
+const LEGEND_ITEMS = [
+  { color: 'bg-green-400', label: 'Excellent (80-100%)' },
+  { color: 'bg-yellow-400', label: 'Moderate (50-79%)' },
+  { color: 'bg-red-400', label: 'Needs Work (<50%)' },
+];
+
+const EDUCATION_CONTENT = {
+  title: 'Understanding Compliance',
+  sections: [
+    {
+      heading: 'What is Compliance?',
+      content: 'A measure of how well government websites meet digital standards for accessibility, functionality, and user experience.',
+    },
+    {
+      heading: 'How is it scored?',
+      content: 'Compliance scores are calculated based on WCAG accessibility standards, mobile responsiveness, required government elements (PST, Transparency Seal, links), and content quality.',
+    },
+  ],
+};
+
+// Utility functions
+const getStatusColor = (score: number) => {
+  if (score >= STATUS_COLORS_CONFIG.excellent.threshold) {
+    return STATUS_COLORS_CONFIG.excellent;
+  }
+  if (score >= STATUS_COLORS_CONFIG.moderate.threshold) {
+    return STATUS_COLORS_CONFIG.moderate;
+  }
+  return STATUS_COLORS_CONFIG.needsImprovement;
+};
+
 const formatDateReadable = (dateString: string): string => {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-// Calculate trend statistics
+const getTrendInsight = (change: number, trend: 'up' | 'down' | 'stable'): string => {
+  if (trend === 'up' && change > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_SIGNIFICANT) {
+    return `Strong improvement! Compliance has increased by ${change.toFixed(1)}% over this period.`;
+  } else if (trend === 'up') {
+    return `Steady progress. Compliance has improved by ${change.toFixed(1)}% over this period.`;
+  } else if (trend === 'down' && Math.abs(change) > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_SIGNIFICANT) {
+    return `Attention needed. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
+  } else if (trend === 'down') {
+    return `Minor decline. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
+  } else {
+    return `Stable performance. Compliance scores have remained consistent over this period.`;
+  }
+};
+
 const calculateStatistics = (data: ChartDataPoint[]): Statistics => {
   if (data.length === 0) {
     return { current: 0, highest: 0, lowest: 0, average: 0, change: 0, trend: 'stable', insight: '' };
@@ -78,23 +132,63 @@ const calculateStatistics = (data: ChartDataPoint[]): Statistics => {
   // Calculate change from first to last
   const first = scores[0];
   const change = ((current - first) / first) * 100;
-  const trend = change > 2 ? 'up' : change < -2 ? 'down' : 'stable';
+  const trend = change > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_MINOR ? 'up' : change < -COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_MINOR ? 'down' : 'stable';
 
-  // Generate insight
-  let insight = '';
-  if (trend === 'up' && change > 10) {
-    insight = `Strong improvement! Compliance has increased by ${change.toFixed(1)}% over this period.`;
-  } else if (trend === 'up') {
-    insight = `Steady progress. Compliance has improved by ${change.toFixed(1)}% over this period.`;
-  } else if (trend === 'down' && Math.abs(change) > 10) {
-    insight = `Attention needed. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
-  } else if (trend === 'down') {
-    insight = `Minor decline. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
-  } else {
-    insight = `Stable performance. Compliance scores have remained consistent over this period.`;
-  }
+  const insight = getTrendInsight(change, trend);
 
   return { current, highest, lowest, average, change, trend, insight };
+};
+
+// Helper Components
+interface TrendStatCardProps {
+  label: string;
+  value: string;
+  textColor: string;
+  bgColor: string;
+  description: string;
+}
+
+const TrendStatCard = ({ label, value, textColor, bgColor, description }: TrendStatCardProps) => (
+  <div className={`rounded-lg p-4 ${bgColor}`}>
+    <p className="text-xs text-slate-600 font-medium mb-1">{label}</p>
+    <p className={`text-2xl font-bold ${textColor}`}>{value}</p>
+    <p className={`text-xs ${textColor} mt-1`}>{description}</p>
+  </div>
+);
+
+interface ColorLegendItemProps {
+  color: string;
+  label: string;
+}
+
+const ColorLegendItem = ({ color, label }: ColorLegendItemProps) => (
+  <div className="flex items-center gap-2">
+    <div className={`w-4 h-4 rounded ${color}`}></div>
+    <span className="text-xs text-slate-600">{label}</span>
+  </div>
+);
+
+interface EducationGuideProps {
+  isVisible: boolean;
+}
+
+const EducationGuide = ({ isVisible }: EducationGuideProps) => {
+  if (!isVisible) return null;
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+      <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+        <Award className={COMPLIANCE_TREND_CONFIG.ICON_SIZES.SMALL} /> {EDUCATION_CONTENT.title}
+      </h4>
+      <div className="space-y-2 text-sm text-slate-700">
+        {EDUCATION_CONTENT.sections.map((section, idx) => (
+          <p key={idx}>
+            <strong>{section.heading}</strong> {section.content}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export const ComplianceTrendChart = () => {
@@ -217,48 +311,35 @@ export const ComplianceTrendChart = () => {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Current Score */}
-          <div className={`rounded-lg p-4 ${statusInfo.bg}`}>
-            <p className="text-xs text-slate-600 font-medium mb-1">Current Score</p>
-            <p className={`text-2xl font-bold ${statusInfo.text}`}>
-              {statistics.current.toFixed(1)}%
-            </p>
-            <p className={`text-xs ${statusInfo.text} mt-1`}>{statusInfo.status}</p>
-          </div>
-
-          {/* Highest Score */}
-          <div className="rounded-lg p-4 bg-emerald-50 border border-emerald-200">
-            <p className="text-xs text-slate-600 font-medium mb-1">Highest Score</p>
-            <p className="text-2xl font-bold text-emerald-700">
-              {statistics.highest.toFixed(1)}%
-            </p>
-            <p className="text-xs text-emerald-600 mt-1">Peak performance</p>
-          </div>
-
-          {/* Lowest Score */}
-          <div className="rounded-lg p-4 bg-orange-50 border border-orange-200">
-            <p className="text-xs text-slate-600 font-medium mb-1">Lowest Score</p>
-            <p className="text-2xl font-bold text-orange-700">
-              {statistics.lowest.toFixed(1)}%
-            </p>
-            <p className="text-xs text-orange-600 mt-1">Minimum recorded</p>
-          </div>
-
-          {/* Change Indicator */}
-          <div className={`rounded-lg p-4 ${statistics.trend === 'up' ? 'bg-green-50 border border-green-200' : statistics.trend === 'down' ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-200'}`}>
-            <p className="text-xs text-slate-600 font-medium mb-1">Progress</p>
-            <p className={`text-2xl font-bold ${
-              statistics.trend === 'up' ? 'text-green-700' : statistics.trend === 'down' ? 'text-red-700' : 'text-slate-700'
-            }`}>
-              {statistics.change > 0 ? '+' : ''}{statistics.change.toFixed(1)}%
-            </p>
-            <p className={`text-xs ${
-              statistics.trend === 'up' ? 'text-green-600' : statistics.trend === 'down' ? 'text-red-600' : 'text-slate-600'
-            } mt-1`}>
-              {statistics.trend === 'up' ? '📈 Improving' : statistics.trend === 'down' ? '📉 Declining' : '➡️ Stable'}
-            </p>
-          </div>
+        <div className={`grid ${COMPLIANCE_TREND_CONFIG.CHART_COLS} gap-3`}>
+          <TrendStatCard
+            label="Current Score"
+            value={`${statistics.current.toFixed(1)}%`}
+            textColor={statusInfo.text}
+            bgColor={statusInfo.bg}
+            description={statusInfo.status}
+          />
+          <TrendStatCard
+            label="Highest Score"
+            value={`${statistics.highest.toFixed(1)}%`}
+            textColor="text-emerald-700"
+            bgColor="bg-emerald-50 border border-emerald-200"
+            description="Peak performance"
+          />
+          <TrendStatCard
+            label="Lowest Score"
+            value={`${statistics.lowest.toFixed(1)}%`}
+            textColor="text-orange-700"
+            bgColor="bg-orange-50 border border-orange-200"
+            description="Minimum recorded"
+          />
+          <TrendStatCard
+            label="Progress"
+            value={`${statistics.change > 0 ? '+' : ''}${statistics.change.toFixed(1)}%`}
+            textColor={statistics.trend === 'up' ? 'text-green-700' : statistics.trend === 'down' ? 'text-red-700' : 'text-slate-700'}
+            bgColor={statistics.trend === 'up' ? 'bg-green-50 border border-green-200' : statistics.trend === 'down' ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-200'}
+            description={statistics.trend === 'up' ? '📈 Improving' : statistics.trend === 'down' ? '📉 Declining' : '➡️ Stable'}
+          />
         </div>
 
         {/* Color Legend */}
@@ -269,49 +350,18 @@ export const ComplianceTrendChart = () => {
               onClick={() => setShowGuide(!showGuide)}
               className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
             >
-              <Info className="h-3 w-3" /> Learn more
+              <Info className={COMPLIANCE_TREND_CONFIG.ICON_SIZES.SMALL} /> Learn more
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-green-400"></div>
-              <span className="text-xs text-slate-600">Excellent (80-100%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-yellow-400"></div>
-              <span className="text-xs text-slate-600">Moderate (50-79%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-red-400"></div>
-              <span className="text-xs text-slate-600">Needs Work (&lt;50%)</span>
-            </div>
+          <div className={`grid ${COMPLIANCE_TREND_CONFIG.LEGEND_COLS} gap-3`}>
+            {LEGEND_ITEMS.map((item) => (
+              <ColorLegendItem key={item.label} color={item.color} label={item.label} />
+            ))}
           </div>
         </div>
 
         {/* Educational Guide (Expandable) */}
-        {showGuide && (
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-            <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
-              <Award className="h-4 w-4" /> Understanding Compliance
-            </h4>
-            <div className="space-y-2 text-sm text-slate-700">
-              <p>
-                <strong>What is Compliance?</strong> A measure of how well government websites meet digital standards for accessibility, functionality, and user experience.
-              </p>
-              <p>
-                <strong>Why does it matter?</strong> Better compliance ensures citizens can easily access government services online, regardless of ability or technology used.
-              </p>
-              <p>
-                <strong>How to interpret:</strong>
-                <ul className="list-disc list-inside mt-1 ml-2">
-                  <li>80%+ = Excellent digital experience for most users</li>
-                  <li>50-79% = Good foundation but room for improvement</li>
-                  <li>&lt;50% = Significant work needed to meet standards</li>
-                </ul>
-              </p>
-            </div>
-          </div>
-        )}
+        <EducationGuide isVisible={showGuide} />
 
         {/* Chart Section */}
         <div className="border-t pt-6">
@@ -370,7 +420,7 @@ export const ComplianceTrendChart = () => {
                   isAnimationActive={true}
                   name="Average Compliance Score"
                 />
-              </LineChart>
+              </LineChart>  
             </ChartContainer>
           ) : (
             <div className="h-80 flex items-center justify-center text-slate-500">

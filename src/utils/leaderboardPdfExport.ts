@@ -3,6 +3,29 @@
  * Generates professional agency ranking reports
  */
 
+// Constants
+const PDF_CONFIG = {
+  CHART_RENDER_DELAY: 500, // ms to wait for chart to fully render
+  CANVAS_OPTIONS: {
+    SCALE: 2,
+    BACKGROUND_COLOR: '#ffffff',
+    USE_CORS: true,
+    ALLOW_TAINT: true,
+    LOGGING: false,
+  },
+  JSPDF_OPTIONS: {
+    orientation: 'portrait' as const,
+    unit: 'mm' as const,
+    format: 'a4' as const,
+  },
+  MARGINS: {
+    TOP: 15,
+    BOTTOM: 15,
+    LEFT: 10,
+    RIGHT: 10,
+  },
+};
+
 interface LeaderboardEntry {
   rank: number;
   agency: {
@@ -41,36 +64,32 @@ export async function generateLeaderboardPDF(
     const html2canvas = html2canvasModule.default;
 
     // Wait for chart to fully render
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, PDF_CONFIG.CHART_RENDER_DELAY));
 
     // Capture the element
     const canvas = await html2canvas(element, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
+      backgroundColor: PDF_CONFIG.CANVAS_OPTIONS.BACKGROUND_COLOR,
+      scale: PDF_CONFIG.CANVAS_OPTIONS.SCALE,
+      useCORS: PDF_CONFIG.CANVAS_OPTIONS.USE_CORS,
+      allowTaint: PDF_CONFIG.CANVAS_OPTIONS.ALLOW_TAINT,
+      logging: PDF_CONFIG.CANVAS_OPTIONS.LOGGING,
     });
 
     const imgData = canvas.toDataURL('image/png');
 
     // Create PDF - Portrait
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    });
+    const pdf = new jsPDF(PDF_CONFIG.JSPDF_OPTIONS);
 
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
-    let yPosition = 15;
+    let yPosition = PDF_CONFIG.MARGINS.TOP;
 
     // ========== Page 1: Title & Summary ==========
 
     // Header
     pdf.setFontSize(22);
     pdf.setTextColor(37, 99, 235); // Blue
-    pdf.text('Agency Performance Leaderboard', 15, yPosition);
+    pdf.text('Agency Performance Leaderboard', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 8;
 
@@ -82,7 +101,7 @@ export async function generateLeaderboardPDF(
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-    })}`, 15, yPosition);
+    })}`, PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 12;
 
@@ -90,7 +109,7 @@ export async function generateLeaderboardPDF(
     pdf.setFontSize(12);
     pdf.setTextColor(15, 23, 42); // Slate-900
     pdf.setFont(undefined, 'bold');
-    pdf.text('Executive Summary', 15, yPosition);
+    pdf.text('Executive Summary', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 7;
 
@@ -99,8 +118,8 @@ export async function generateLeaderboardPDF(
     pdf.setFont(undefined, 'normal');
 
     if (metadata?.stats?.performanceInsight) {
-      const summaryLines = pdf.splitTextToSize(metadata.stats.performanceInsight, pdfWidth - 30);
-      pdf.text(summaryLines, 15, yPosition);
+      const summaryLines = pdf.splitTextToSize(metadata.stats.performanceInsight, pdfWidth - (PDF_CONFIG.MARGINS.LEFT + PDF_CONFIG.MARGINS.RIGHT));
+      pdf.text(summaryLines, PDF_CONFIG.MARGINS.LEFT, yPosition);
       yPosition += summaryLines.length * 5 + 5;
     }
 
@@ -109,14 +128,14 @@ export async function generateLeaderboardPDF(
     pdf.setFontSize(12);
     pdf.setTextColor(15, 23, 42);
     pdf.setFont(undefined, 'bold');
-    pdf.text('Key Performance Metrics', 15, yPosition);
+    pdf.text('Key Performance Metrics', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 8;
 
     if (metadata?.stats) {
       const stats = metadata.stats;
-      const colWidth = (pdfWidth - 30) / 4;
-      const startX = 15;
+      const colWidth = (pdfWidth - (PDF_CONFIG.MARGINS.LEFT + PDF_CONFIG.MARGINS.RIGHT)) / 4;
+      const startX = PDF_CONFIG.MARGINS.LEFT;
 
       // KPI Box styling function
       const drawKPIBox = (x: number, label: string, value: string, unit: string, color: string) => {
@@ -159,7 +178,7 @@ export async function generateLeaderboardPDF(
     pdf.setFontSize(11);
     pdf.setTextColor(15, 23, 42);
     pdf.setFont(undefined, 'bold');
-    pdf.text('Performance Tiers', 15, yPosition);
+    pdf.text('Performance Tiers', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 7;
 
@@ -173,9 +192,9 @@ export async function generateLeaderboardPDF(
     pdf.setFontSize(9);
     tierItems.forEach((item, index) => {
       pdf.setFillColor(...hexToRgb(item.color));
-      pdf.rect(15, yPosition - 2, 3, 3, 'F');
+      pdf.rect(PDF_CONFIG.MARGINS.LEFT, yPosition - 2, 3, 3, 'F');
       pdf.setTextColor(71, 85, 105);
-      pdf.text(`${item.range} — ${item.status}`, 20, yPosition);
+      pdf.text(`${item.range} — ${item.status}`, PDF_CONFIG.MARGINS.LEFT + 5, yPosition);
       yPosition += 5;
     });
 
@@ -186,15 +205,15 @@ export async function generateLeaderboardPDF(
       pdf.setFontSize(11);
       pdf.setTextColor(15, 23, 42);
       pdf.setFont(undefined, 'bold');
-      pdf.text('Performance Gap Analysis', 15, yPosition);
+      pdf.text('Performance Gap Analysis', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
       yPosition += 6;
 
       pdf.setFontSize(9);
       pdf.setFont(undefined, 'normal');
       pdf.setTextColor(71, 85, 105);
-      const gapLines = pdf.splitTextToSize(metadata.stats.gapAnalysis, pdfWidth - 30);
-      pdf.text(gapLines, 15, yPosition);
+      const gapLines = pdf.splitTextToSize(metadata.stats.gapAnalysis, pdfWidth - (PDF_CONFIG.MARGINS.LEFT + PDF_CONFIG.MARGINS.RIGHT));
+      pdf.text(gapLines, PDF_CONFIG.MARGINS.LEFT, yPosition);
 
       yPosition += gapLines.length * 4 + 5;
     }
@@ -202,24 +221,24 @@ export async function generateLeaderboardPDF(
     // Add page break if needed
     if (yPosition > pdfHeight - 50) {
       pdf.addPage();
-      yPosition = 15;
+      yPosition = PDF_CONFIG.MARGINS.TOP;
     }
 
     // ========== Ranking Chart Page ==========
     if (yPosition > pdfHeight - 50) {
       pdf.addPage();
-      yPosition = 15;
+      yPosition = PDF_CONFIG.MARGINS.TOP;
     }
 
     pdf.setFontSize(12);
     pdf.setTextColor(15, 23, 42);
     pdf.setFont(undefined, 'bold');
-    pdf.text('Compliance Rankings Chart', 15, yPosition);
+    pdf.text('Compliance Rankings Chart', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 10;
 
     // Add chart image
-    const margin = 15;
+    const margin = PDF_CONFIG.MARGINS.LEFT;
     const chartWidth = pdfWidth - 2 * margin;
     const chartHeight = (canvas.height / canvas.width) * chartWidth;
 
@@ -230,13 +249,13 @@ export async function generateLeaderboardPDF(
     // ========== Page 3: Detailed Rankings ==========
     if (yPosition > pdfHeight - 60 || yPosition + 100 > pdfHeight) {
       pdf.addPage();
-      yPosition = 15;
+      yPosition = PDF_CONFIG.MARGINS.TOP;
     }
 
     pdf.setFontSize(12);
     pdf.setTextColor(15, 23, 42);
     pdf.setFont(undefined, 'bold');
-    pdf.text('Detailed Rankings', 15, yPosition);
+    pdf.text('Detailed Rankings', PDF_CONFIG.MARGINS.LEFT, yPosition);
 
     yPosition += 10;
 
@@ -246,9 +265,9 @@ export async function generateLeaderboardPDF(
       pdf.setFont(undefined, 'bold');
       pdf.setTextColor(255, 255, 255);
       pdf.setFillColor(37, 99, 235); // Blue header
-      pdf.rect(15, yPosition - 5, pdfWidth - 30, 6, 'F');
+      pdf.rect(PDF_CONFIG.MARGINS.LEFT, yPosition - 5, pdfWidth - (PDF_CONFIG.MARGINS.LEFT + PDF_CONFIG.MARGINS.RIGHT), 6, 'F');
 
-      pdf.text('Rank', 17, yPosition);
+      pdf.text('Rank', PDF_CONFIG.MARGINS.LEFT + 2, yPosition);
       pdf.text('Agency Name', 25, yPosition);
       pdf.text('Acronym', 140, yPosition);
       pdf.text('Score', 165, yPosition);
@@ -262,16 +281,16 @@ export async function generateLeaderboardPDF(
       metadata.leaderboard.slice(0, 15).forEach((entry, index) => {
         if (yPosition > pdfHeight - 15) {
           pdf.addPage();
-          yPosition = 15;
+          yPosition = PDF_CONFIG.MARGINS.TOP;
 
           // Repeat headers on new page
           pdf.setFontSize(9);
           pdf.setFont(undefined, 'bold');
           pdf.setTextColor(255, 255, 255);
           pdf.setFillColor(37, 99, 235);
-          pdf.rect(15, yPosition - 5, pdfWidth - 30, 6, 'F');
+          pdf.rect(PDF_CONFIG.MARGINS.LEFT, yPosition - 5, pdfWidth - (PDF_CONFIG.MARGINS.LEFT + PDF_CONFIG.MARGINS.RIGHT), 6, 'F');
 
-          pdf.text('Rank', 17, yPosition);
+          pdf.text('Rank', PDF_CONFIG.MARGINS.LEFT + 2, yPosition);
           pdf.text('Agency Name', 25, yPosition);
           pdf.text('Acronym', 140, yPosition);
           pdf.text('Score', 165, yPosition);
@@ -285,10 +304,10 @@ export async function generateLeaderboardPDF(
         // Alternating row background
         if (index % 2 === 0) {
           pdf.setFillColor(245, 245, 245);
-          pdf.rect(15, yPosition - 4, pdfWidth - 30, 5, 'F');
+          pdf.rect(PDF_CONFIG.MARGINS.LEFT, yPosition - 4, pdfWidth - (PDF_CONFIG.MARGINS.LEFT + PDF_CONFIG.MARGINS.RIGHT), 5, 'F');
         }
 
-        pdf.text(entry.rank.toString(), 17, yPosition);
+        pdf.text(entry.rank.toString(), PDF_CONFIG.MARGINS.LEFT + 2, yPosition);
         pdf.text(entry.agency.name.substring(0, 35), 25, yPosition);
         pdf.text(entry.agency.acronym || '—', 140, yPosition);
         pdf.text(`${entry.overallScore.toFixed(1)}%`, 165, yPosition);

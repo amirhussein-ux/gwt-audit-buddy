@@ -7,6 +7,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Lock, User } from 'lucide-react';
 
+/**
+ * Login page configuration
+ * Contains UI text, routes, and demo credentials
+ */
+const LOGIN_CONFIG = {
+  ROUTES: {
+    DASHBOARD: '/dashboard',
+  },
+  UI: {
+    TITLE: 'MASID',
+    SUBTITLE: 'Monitoring and Automated Standards Inspection Dashboard',
+    CARD_TITLE: 'Government Agency Login',
+    CARD_DESCRIPTION: 'Enter your shared account credentials',
+    ORGANIZATION: 'Department of Information and Communications Technology',
+  },
+  PLACEHOLDER: {
+    EMAIL: 'name@dict.gov.ph',
+  },
+  // DEMO_CREDENTIALS removed for security - credentials stored only in backend
+  // Use environment variable VITE_DEMO_EMAIL and VITE_DEMO_PASSWORD if needed (never in source code)
+
+};
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,7 +41,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate(LOGIN_CONFIG.ROUTES.DASHBOARD, { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -29,7 +52,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      navigate('/dashboard');
+      navigate(LOGIN_CONFIG.ROUTES.DASHBOARD);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -47,15 +70,15 @@ export default function LoginPage() {
               <Lock className="text-white" size={24} />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-white">MASID</h1>
-          <p className="text-slate-400">Monitoring and Automated Standards Inspection Dashboard</p>
+          <h1 className="text-3xl font-bold text-white">{LOGIN_CONFIG.UI.TITLE}</h1>
+          <p className="text-slate-400">{LOGIN_CONFIG.UI.SUBTITLE}</p>
         </div>
 
         {/* Login Card */}
         <Card className="border-slate-700 bg-slate-800">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-white">Government Agency Login</CardTitle>
-            <CardDescription>Enter your shared account credentials</CardDescription>
+            <CardTitle className="text-white">{LOGIN_CONFIG.UI.CARD_TITLE}</CardTitle>
+            <CardDescription>{LOGIN_CONFIG.UI.CARD_DESCRIPTION}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -74,7 +97,7 @@ export default function LoginPage() {
                   <User className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" />
                   <Input
                     type="email"
-                    placeholder="name@dict.gov.ph"
+                    placeholder={LOGIN_CONFIG.PLACEHOLDER.EMAIL}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
@@ -110,26 +133,28 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* Demo Credentials */}
-            <div className="mt-6 p-3 bg-slate-700 rounded-lg border border-slate-600">
-              <p className="text-sm font-medium text-slate-200 mb-2">Demo Credentials:</p>
-              <p className="text-xs text-slate-400">
-                <strong>Email:</strong> user@dict.gov.ph <br />
-                <strong>Password:</strong> Temporary123@
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                User: Amir Macakiling
-              </p>
-              <p className="text-xs text-slate-500">
-                ⚠️ Change password immediately in production
-              </p>
-            </div>
+            {/* Demo Credentials - Only show if configured in environment */}
+            {LOGIN_CONFIG.SHOW_DEMO && LOGIN_CONFIG.DEMO_CREDENTIALS.EMAIL && (
+              <div className="mt-6 p-3 bg-slate-700 rounded-lg border border-slate-600">
+                <p className="text-sm font-medium text-slate-200 mb-2">Demo Credentials (Dev Mode):</p>
+                <p className="text-xs text-slate-400">
+                  <strong>Email:</strong> {LOGIN_CONFIG.DEMO_CREDENTIALS.EMAIL} <br />
+                  <strong>Password:</strong> {'•'.repeat(LOGIN_CONFIG.DEMO_CREDENTIALS.PASSWORD.length)}
+                </p>
+                <p className="text-xs text-slate-500 mt-2">
+                  User: {LOGIN_CONFIG.DEMO_CREDENTIALS.USER_NAME}
+                </p>
+                <p className="text-xs text-yellow-400">
+                  ⚠️ Demo credentials only available in development. Not shown in production.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
         {/* Footer */}
         <p className="text-center text-sm text-slate-400">
-          Powered by Department of Information and Communications Technology
+          Powered by {LOGIN_CONFIG.UI.ORGANIZATION}
         </p>
       </div>
     </div>

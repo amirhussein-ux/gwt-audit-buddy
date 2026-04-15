@@ -1,90 +1,58 @@
 # Pre-Made Accounts Quick Reference
 
-## 🚀 Demo User (For Testing & Navigation)
-
-Use this account to navigate and test the system:
-
-```
-Username: Amir Macakiling
-Email: user@dict.gov.ph
-Password: Temporary123@
-Role: Admin (Full access)
-```
-
-**Quick Setup**: See [DEMO_USER.md](DEMO_USER.md) for MongoDB insertion instructions.
+⚠️ **SECURITY NOTICE**: Credentials are **NOT** stored in this file for security reasons.
 
 ---
 
-## Setup
+## Quick Setup for Demo
 
-**Manual MongoDB Insertion** - See [MANUAL_ACCOUNT_SETUP.md](MANUAL_ACCOUNT_SETUP.md) for detailed instructions.
+### Automated Setup (Recommended)
+```bash
+# Create a pre-verified demo user
+cd backend
+node seed.js
+```
 
-**Quick Setup Options:**
+The console will display the created credentials. These are environment-specific and not stored in version control.
+
+### Environment Variables
+Demo credentials can be provided through environment variables:
+
+**.env.local** (development only, never commit):
+```env
+VITE_DEMO_EMAIL=user@dict.gov.ph
+VITE_DEMO_PASSWORD=YourSecurePassword123!
+VITE_SHOW_DEMO_CREDENTIALS=true
+```
+
+**Production**: Do NOT set `VITE_SHOW_DEMO_CREDENTIALS` - demo credentials will not be displayed.
+
+---
+
+## Manual Account Creation
+
+### MongoDB Insertion
+See [MANUAL_ACCOUNT_SETUP.md](MANUAL_ACCOUNT_SETUP.md) for detailed instructions on creating accounts:
+
 1. **MongoDB Compass (GUI)** - Insert documents via UI
-2. **MongoDB Shell (CLI)** - Run bulk insert command
-3. **Node.js** - Programmatic insertion
+2. **MongoDB Shell (CLI)** - Run bulk insert command  
+3. **Node.js** - Programmatic insertion via scripts
 
----
+### Required Fields for User Documents
 
-## Login Credentials
+When manually creating accounts, include these fields:
 
-### Admin Accounts (Full Access)
-```
-Username: admin
-Email: admin@dict.gov.ph
-Password: changeme123
-Role: admin
-
----
-
-Username: administrator
-Email: administrator@dict.gov.ph
-Password: changeme123
-Role: admin
-```
-
-### Auditor Accounts (Can Run Audits)
-```
-Username: auditor1
-Email: auditor1@dict.gov.ph
-Password: changeme123
-Role: auditor
-
----
-
-Username: auditor2
-Email: auditor2@dict.gov.ph
-Password: changeme123
-Role: auditor
-
----
-
-Username: compliance_officer
-Email: compliance.officer@dict.gov.ph
-Password: changeme123
-Role: auditor
-```
-
-### Viewer Accounts (Read-Only)
-```
-Username: viewer1
-Email: viewer1@dict.gov.ph
-Password: changeme123
-Role: viewer
-
----
-
-Username: viewer2
-Email: viewer2@dict.gov.ph
-Password: changeme123
-Role: viewer
-
----
-
-Username: supervisor
-Email: supervisor@dict.gov.ph
-Password: changeme123
-Role: viewer
+```javascript
+{
+  "username": "account_username",      // Unique identifier
+  "email": "user@dict.gov.ph",         // Must be unique
+  "hashedPassword": "hashed_value",    // Will be hashed if plain text
+  "role": "admin|auditor|viewer",      // User role
+  "isActive": true,                     // Account status
+  "isEmailVerified": true,              // Email verification status
+  "createdAt": ISODate(),               // Account creation timestamp
+  "updatedAt": ISODate()                // Last update timestamp
+}
 ```
 
 ---
@@ -96,7 +64,44 @@ Role: viewer
 | View audit results | ✓ | ✓ | ✓ |
 | Run audits | ✓ | ✓ | ✗ |
 | Manage users | ✓ | ✗ | ✗ |
+| Download reports | ✓ | ✓ | ✓ |
 | Access all features | ✓ | ◐ | ✗ |
+
+---
+
+## Security Best Practices
+
+✅ **DO:**
+- Store credentials in environment variables (`.env.local` for development)
+- Use strong, unique passwords
+- Change demo passwords immediately for production
+- Never commit `.env` files to version control
+- Rotate secrets regularly
+
+❌ **DON'T:**
+- Hardcode credentials in source code
+- Share credentials in chat or email
+- Commit secrets to git (even in old commits)
+- Use default passwords in production
+- Log or display sensitive information
+
+---
+
+## Troubleshooting
+
+**Can't see demo credentials on login page?**
+- Ensure `VITE_SHOW_DEMO_CREDENTIALS=true` in `.env.local`
+- Clear browser cache and hard refresh
+- Check browser console for errors
+
+**Demo user not created?**
+- Verify MongoDB connection in `.env`
+- Check backend logs: `node seed.js` should output status messages
+- Ensure User model is properly imported
+
+---
+
+See [SECURITY_REFACTORING_COMPLETE.md](SECURITY_REFACTORING_COMPLETE.md) for authentication security details.
 
 ---
 

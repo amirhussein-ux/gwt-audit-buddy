@@ -48,19 +48,137 @@ interface ChartEntry {
   tier: 'elite' | 'strong' | 'developing' | 'emerging';
 }
 
+// Constants
+const LEADERBOARD_CONFIG = {
+  TIER_THRESHOLDS: {
+    ELITE: 85,
+    STRONG: 70,
+    DEVELOPING: 55,
+  },
+  GRID_COLS: 'grid-cols-2 md:grid-cols-4',
+  ICON_SIZES: {
+    SMALL: 'h-4 w-4',
+    MEDIUM: 'h-5 w-5',
+  },
+  PERFORMANCE_GAP_THRESHOLD: 20,
+  ELITE_PERCENTAGE_THRESHOLD: 0.7,
+  GOOD_PERFORMANCE_THRESHOLD: 0.4,
+  AVERAGE_SCORE_THRESHOLD: 70,
+  SMALL_GAP_THRESHOLD: 10,
+  MEDIUM_GAP_THRESHOLD: 25,
+};
+
+const TIER_LABELS = {
+  elite: { label: 'Elite Performer', color: 'bg-green-50 text-green-700' },
+  strong: { label: 'Strong Performer', color: 'bg-blue-50 text-blue-700' },
+  developing: { label: 'Developing', color: 'bg-yellow-50 text-yellow-700' },
+  emerging: { label: 'Emerging Performer', color: 'bg-orange-50 text-orange-700' },
+};
+
+const BADGE_COLORS = {
+  elite: 'bg-green-100 text-green-800',
+  strong: 'bg-blue-100 text-blue-800',
+  developing: 'bg-yellow-100 text-yellow-800',
+  emerging: 'bg-red-100 text-red-800',
+};
+
+const METRIC_CARDS = [
+  {
+    key: 'topScore',
+    label: 'Top Score',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    textColor: 'text-green-700',
+    subColor: 'text-green-600',
+    suffix: '%',
+    description: 'Best performer',
+  },
+  {
+    key: 'averageScore',
+    label: 'Average Score',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-700',
+    subColor: 'text-blue-600',
+    suffix: '%',
+    description: 'System average',
+  },
+  {
+    key: 'lowestScore',
+    label: 'Lowest Score',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+    textColor: 'text-orange-700',
+    subColor: 'text-orange-600',
+    suffix: '%',
+    description: 'Opportunity area',
+  },
+  {
+    key: 'excellentCount',
+    label: 'Elite Performers',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-700',
+    subColor: 'text-purple-600',
+    suffix: '',
+    description: 'Exceeding standard',
+  },
+];
+
+const TIER_LEGEND = [
+  { color: 'bg-green-400', label: 'Elite (85%+)' },
+  { color: 'bg-blue-400', label: 'Strong (70-84%)' },
+  { color: 'bg-yellow-400', label: 'Developing (55-69%)' },
+  { color: 'bg-orange-400', label: 'Emerging (<55%)' },
+];
+
+const EDUCATIONAL_GUIDE = {
+  title: 'Understanding Agency Performance',
+  sections: [
+    {
+      heading: 'What is this ranking?',
+      content: 'Agencies are ranked by their overall compliance score, reflecting how well their websites meet digital standards for accessibility, functionality, and user experience.',
+    },
+    {
+      heading: 'Performance Tiers:',
+      list: [
+        'Elite (85%+) = Industry-leading examples to learn from',
+        'Strong (70-84%) = Solid compliance with best practices',
+        'Developing (55-69%) = Good foundation, targeted improvements needed',
+        'Emerging (<55%) = Significant work required',
+      ],
+    },
+    {
+      heading: 'How to use:',
+      content: 'Learn from top performers, identify common challenges across peers, and share solutions to improve system-wide compliance.',
+    },
+  ],
+};
+
 // Utility functions
+const getTierFromScore = (score: number): 'elite' | 'strong' | 'developing' | 'emerging' => {
+  if (score >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE) return 'elite';
+  if (score >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.STRONG) return 'strong';
+  if (score >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.DEVELOPING) return 'developing';
+  return 'emerging';
+};
+
 const getAgencyTier = (score: number): { tier: 'elite' | 'strong' | 'developing' | 'emerging'; label: string; color: string } => {
-  if (score >= 85) return { tier: 'elite', label: 'Elite Performer', color: 'bg-green-50 text-green-700' };
-  if (score >= 70) return { tier: 'strong', label: 'Strong Performer', color: 'bg-blue-50 text-blue-700' };
-  if (score >= 55) return { tier: 'developing', label: 'Developing', color: 'bg-yellow-50 text-yellow-700' };
-  return { tier: 'emerging', label: 'Emerging Performer', color: 'bg-orange-50 text-orange-700' };
+  const tier = getTierFromScore(score);
+  return { tier, ...TIER_LABELS[tier] };
 };
 
 const getScoreBadgeColor = (score: number) => {
-  if (score >= 85) return 'bg-green-100 text-green-800';
-  if (score >= 70) return 'bg-blue-100 text-blue-800';
-  if (score >= 55) return 'bg-yellow-100 text-yellow-800';
-  return 'bg-red-100 text-red-800';
+  const tier = getTierFromScore(score);
+  return BADGE_COLORS[tier];
+};
+
+const getMedalIcon = (rank: number) => {
+  const iconClass = LEADERBOARD_CONFIG.ICON_SIZES.SMALL;
+  if (rank === 1) return <Trophy className={`${iconClass} text-yellow-500`} />;
+  if (rank === 2) return <Medal className={`${iconClass} text-gray-400`} />;
+  if (rank === 3) return <Medal className={`${iconClass} text-orange-600`} />;
+  return null;
 };
 
 const calculateLeaderboardStats = (leaderboard: LeaderboardEntry[]): LeaderboardStats => {
@@ -79,30 +197,129 @@ const calculateLeaderboardStats = (leaderboard: LeaderboardEntry[]): Leaderboard
   const topScore = Math.max(...scores);
   const lowestScore = Math.min(...scores);
   const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-  const excellentCount = scores.filter(s => s >= 85).length;
+  const excellentCount = scores.filter(s => s >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE).length;
   const scoreGap = topScore - lowestScore;
 
   let performanceInsight = '';
-  if (excellentCount >= leaderboard.length * 0.7) {
-    performanceInsight = `Excellent system-wide performance! ${excellentCount} of ${leaderboard.length} top agencies exceed 85%, demonstrating strong digital maturity.`;
-  } else if (excellentCount >= leaderboard.length * 0.4) {
-    performanceInsight = `Good performance across the system. ${excellentCount} agencies are leading the way at 85%+, with others following closely.`;
-  } else if (averageScore >= 70) {
+  if (excellentCount >= leaderboard.length * LEADERBOARD_CONFIG.ELITE_PERCENTAGE_THRESHOLD) {
+    performanceInsight = `Excellent system-wide performance! ${excellentCount} of ${leaderboard.length} top agencies exceed ${LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE}%, demonstrating strong digital maturity.`;
+  } else if (excellentCount >= leaderboard.length * LEADERBOARD_CONFIG.GOOD_PERFORMANCE_THRESHOLD) {
+    performanceInsight = `Good performance across the system. ${excellentCount} agencies are leading the way at ${LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE}%+, with others following closely.`;
+  } else if (averageScore >= LEADERBOARD_CONFIG.AVERAGE_SCORE_THRESHOLD) {
     performanceInsight = `Solid foundation established. Most agencies are performing well, but top performers show what's achievable.`;
   } else {
     performanceInsight = `Opportunity for improvement. Performance is inconsistent across agencies, indicating shared challenges.`;
   }
 
   let gapAnalysis = '';
-  if (scoreGap < 10) {
+  if (scoreGap < LEADERBOARD_CONFIG.SMALL_GAP_THRESHOLD) {
     gapAnalysis = `${scoreGap.toFixed(1)}% gap — very consistent performance across all agencies`;
-  } else if (scoreGap < 25) {
+  } else if (scoreGap < LEADERBOARD_CONFIG.MEDIUM_GAP_THRESHOLD) {
     gapAnalysis = `${scoreGap.toFixed(1)}% gap — moderate variation; knowledge sharing could help`;
   } else {
     gapAnalysis = `${scoreGap.toFixed(1)}% gap — significant opportunity; top performers have solutions to share`;
   }
 
   return { topScore, averageScore, lowestScore, excellentCount, performanceInsight, gapAnalysis };
+};
+
+// Helper Components
+interface StatsMetricCardProps {
+  metric: typeof METRIC_CARDS[0];
+  stats: LeaderboardStats;
+}
+
+const StatsMetricCard = ({ metric, stats }: StatsMetricCardProps) => {
+  const value = stats[metric.key as keyof LeaderboardStats] as number;
+  const displayValue = typeof value === 'number' ? value.toFixed(value % 1 === 0 ? 0 : 1) : value;
+  
+  return (
+    <div className={`rounded-lg p-4 ${metric.bgColor} border ${metric.borderColor}`}>
+      <p className="text-xs text-slate-600 font-medium mb-1">{metric.label}</p>
+      <p className={`text-2xl font-bold ${metric.textColor}`}>
+        {displayValue}{metric.suffix}
+      </p>
+      <p className={`text-xs ${metric.subColor} mt-1`}>{metric.description}</p>
+    </div>
+  );
+};
+
+interface TierLegendProps {
+  onLearnMore: () => void;
+  showGuide: boolean;
+}
+
+const TierLegend = ({ onLearnMore, showGuide }: TierLegendProps) => (
+  <div className="border-t pt-4">
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-sm font-semibold text-slate-700">Performance Tiers:</span>
+      <button
+        onClick={onLearnMore}
+        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+      >
+        <Info className={LEADERBOARD_CONFIG.ICON_SIZES.SMALL} /> Learn more
+      </button>
+    </div>
+    <div className={`grid ${LEADERBOARD_CONFIG.GRID_COLS} gap-2`}>
+      {TIER_LEGEND.map((tier) => (
+        <div key={tier.label} className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${tier.color}`}></div>
+          <span className="text-xs text-slate-600">{tier.label}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+interface EducationalGuideProps {
+  isVisible: boolean;
+}
+
+const EducationalGuide = ({ isVisible }: EducationalGuideProps) => {
+  if (!isVisible) return null;
+  
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+      <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+        <Award className={LEADERBOARD_CONFIG.ICON_SIZES.SMALL} /> {EDUCATIONAL_GUIDE.title}
+      </h4>
+      <div className="space-y-2 text-sm text-slate-700">
+        {EDUCATIONAL_GUIDE.sections.map((section, idx) => (
+          <p key={idx}>
+            <strong>{section.heading}</strong>
+            {section.content && ` ${section.content}`}
+            {section.list && (
+              <ul className="list-disc list-inside mt-1 ml-2">
+                {section.list.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface PerformanceGapAnalysisProps {
+  stats: LeaderboardStats;
+}
+
+const PerformanceGapAnalysis = ({ stats }: PerformanceGapAnalysisProps) => {
+  const showRecommendation = stats.topScore - stats.lowestScore > LEADERBOARD_CONFIG.PERFORMANCE_GAP_THRESHOLD;
+  
+  return (
+    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+      <p className="text-xs font-semibold text-indigo-900 mb-2">📊 Performance Gap Analysis</p>
+      <p className="text-sm text-indigo-800">{stats.gapAnalysis}</p>
+      {showRecommendation && (
+        <p className="text-sm text-indigo-800 mt-2">
+          💡 <strong>Recommendation:</strong> Facilitate peer learning sessions where top performers share best practices. Knowledge transfer could significantly improve lower-ranked agencies.
+        </p>
+      )}
+    </div>
+  );
 };
 
 export const AgencyLeaderboard = () => {
@@ -204,92 +421,17 @@ export const AgencyLeaderboard = () => {
             </div>
 
             {/* Key Metrics Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {/* Top Score */}
-              <div className="rounded-lg p-4 bg-green-50 border border-green-200">
-                <p className="text-xs text-slate-600 font-medium mb-1">Top Score</p>
-                <p className="text-2xl font-bold text-green-700">{stats.topScore.toFixed(1)}%</p>
-                <p className="text-xs text-green-600 mt-1">Best performer</p>
-              </div>
-
-              {/* Average Score */}
-              <div className="rounded-lg p-4 bg-blue-50 border border-blue-200">
-                <p className="text-xs text-slate-600 font-medium mb-1">Average Score</p>
-                <p className="text-2xl font-bold text-blue-700">{stats.averageScore.toFixed(1)}%</p>
-                <p className="text-xs text-blue-600 mt-1">System average</p>
-              </div>
-
-              {/* Lowest Score */}
-              <div className="rounded-lg p-4 bg-orange-50 border border-orange-200">
-                <p className="text-xs text-slate-600 font-medium mb-1">Lowest Score</p>
-                <p className="text-2xl font-bold text-orange-700">{stats.lowestScore.toFixed(1)}%</p>
-                <p className="text-xs text-orange-600 mt-1">Opportunity area</p>
-              </div>
-
-              {/* Elite Performers */}
-              <div className="rounded-lg p-4 bg-purple-50 border border-purple-200">
-                <p className="text-xs text-slate-600 font-medium mb-1">Elite Performers</p>
-                <p className="text-2xl font-bold text-purple-700">{stats.excellentCount}</p>
-                <p className="text-xs text-purple-600 mt-1">Exceeding standard</p>
-              </div>
+            <div className={`grid ${LEADERBOARD_CONFIG.GRID_COLS} gap-3`}>
+              {METRIC_CARDS.map((metric) => (
+                <StatsMetricCard key={metric.key} metric={metric} stats={stats} />
+              ))}
             </div>
 
             {/* Performance Tier Legend */}
-            <div className="border-t pt-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-sm font-semibold text-slate-700">Performance Tiers:</span>
-                <button
-                  onClick={() => setShowGuide(!showGuide)}
-                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  <Info className="h-3 w-3" /> Learn more
-                </button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-400"></div>
-                  <span className="text-xs text-slate-600">Elite (85%+)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-                  <span className="text-xs text-slate-600">Strong (70-84%)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-                  <span className="text-xs text-slate-600">Developing (55-69%)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-orange-400"></div>
-                  <span className="text-xs text-slate-600">Emerging (&lt;55%)</span>
-                </div>
-              </div>
-            </div>
+            <TierLegend onLearnMore={() => setShowGuide(!showGuide)} showGuide={showGuide} />
 
             {/* Educational Guide */}
-            {showGuide && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-                <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
-                  <Award className="h-4 w-4" /> Understanding Agency Performance
-                </h4>
-                <div className="space-y-2 text-sm text-slate-700">
-                  <p>
-                    <strong>What is this ranking?</strong> Agencies are ranked by their overall compliance score, reflecting how well their websites meet digital standards for accessibility, functionality, and user experience.
-                  </p>
-                  <p>
-                    <strong>Performance Tiers:</strong>
-                    <ul className="list-disc list-inside mt-1 ml-2">
-                      <li>Elite (85%+) = Industry-leading examples to learn from</li>
-                      <li>Strong (70-84%) = Solid compliance with best practices</li>
-                      <li>Developing (55-69%) = Good foundation, targeted improvements needed</li>
-                      <li>Emerging (&lt;55%) = Significant work required</li>
-                    </ul>
-                  </p>
-                  <p>
-                    <strong>How to use:</strong> Learn from top performers, identify common challenges across peers, and share solutions to improve system-wide compliance.
-                  </p>
-                </div>
-              </div>
-            )}
+            <EducationalGuide isVisible={showGuide} />
 
             {/* Chart Section */}
             <div className="border-t pt-6">
@@ -364,15 +506,7 @@ export const AgencyLeaderboard = () => {
             </div>
 
             {/* Performance Gap Analysis */}
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-              <p className="text-xs font-semibold text-indigo-900 mb-2">📊 Performance Gap Analysis</p>
-              <p className="text-sm text-indigo-800">{stats.gapAnalysis}</p>
-              {stats.topScore - stats.lowestScore > 20 && (
-                <p className="text-sm text-indigo-800 mt-2">
-                  💡 <strong>Recommendation:</strong> Facilitate peer learning sessions where top performers share best practices. Knowledge transfer could significantly improve lower-ranked agencies.
-                </p>
-              )}
-            </div>
+            <PerformanceGapAnalysis stats={stats} />
           </>
         ) : (
           <div className="h-48 flex items-center justify-center text-slate-500">

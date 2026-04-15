@@ -1,5 +1,24 @@
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 
+// Constants
+const AUTH_CONFIG = {
+  STORAGE_KEYS: {
+    AUTH_TOKEN: 'authToken',
+    LAST_AUDIT_RESULT: 'lastAuditResult',
+    ACTIVE_AUDIT: 'activeAudit',
+    AUDIT_STEPS: 'auditSteps',
+  },
+  ENDPOINTS: {
+    LOGIN: '/auth/login',
+    LOGOUT: '/auth/logout',
+    VERIFY: '/auth/verify',
+  },
+  HEADERS: {
+    CONTENT_TYPE: 'application/json',
+    AUTHORIZATION_PREFIX: 'Bearer',
+  },
+};
+
 export interface User {
   id: string;
   username: string;
@@ -24,7 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => {
     // Load from localStorage on init
-    return typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    return typeof window !== 'undefined' ? localStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : null;
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -58,9 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (email: string, password: string) => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/auth/login`, {
+        const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.LOGIN}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': AUTH_CONFIG.HEADERS.CONTENT_TYPE },
           body: JSON.stringify({ email, password }),
         });
 
@@ -72,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await response.json();
 
         // Store token and user info
-        localStorage.setItem('authToken', data.token);
+        localStorage.setItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN, data.token);
         setToken(data.token);
         setUser(data.user);
       } catch (error) {
@@ -92,11 +111,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       if (token) {
-        await fetch(`${API_BASE}/auth/logout`, {
+        await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.LOGOUT}`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            'Authorization': `${AUTH_CONFIG.HEADERS.AUTHORIZATION_PREFIX} ${token}`,
+            'Content-Type': AUTH_CONFIG.HEADERS.CONTENT_TYPE,
           },
         });
       }
@@ -104,8 +123,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[Auth] Logout error:', error);
     } finally {
       // Clear local state and user-specific storage
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('lastAuditResult'); // Clear audit result from Dashboard
+      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT); // Clear audit result from Dashboard
       setToken(null);
       setUser(null);
       setIsLoading(false);
@@ -120,16 +139,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       // Set Authorization header for this request
-      const response = await fetch(`${API_BASE}/auth/verify`, {
+      const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.VERIFY}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          'Authorization': `${AUTH_CONFIG.HEADERS.AUTHORIZATION_PREFIX} ${token}`,
+          'Content-Type': AUTH_CONFIG.HEADERS.CONTENT_TYPE,
         },
       });
 
       if (!response.ok) {
         // Token invalid or expired
-        localStorage.removeItem('authToken');
+        localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
         setToken(null);
         setUser(null);
         return false;
@@ -139,7 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.valid) {
         return true;
       } else {
-        localStorage.removeItem('authToken');
+        localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
         setToken(null);
         setUser(null);
         return false;

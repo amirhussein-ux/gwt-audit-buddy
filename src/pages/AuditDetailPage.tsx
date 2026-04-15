@@ -8,6 +8,28 @@ import { ArrowLeft, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AuditSummaryReport } from '@/components/AuditSummaryReport';
 
+/**
+ * Audit detail page configuration
+ * Contains API endpoints, query settings, and UI navigation routes
+ */
+const AUDIT_DETAIL_CONFIG = {
+  API: {
+    BASE: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
+    ENDPOINTS: {
+      AUDIT: '/audit',
+    },
+  },
+  ROUTES: {
+    RESULTS: '/results',
+  },
+  QUERY: {
+    STALE_TIME: 0,
+    GC_TIME: 0,
+    POLL_INTERVAL: 2000, // ms
+    MIN_CHECKS_FOR_COMPLETION: 50,
+  },
+};
+
 interface CheckItem {
   key: string;
   status: 'Pass' | 'Fail' | 'N/A' | 'NotTested';
@@ -74,7 +96,7 @@ interface UIReport {
     content: number;
     total: number;
   };
-  categoryResults?: Array<any>;
+  categoryResults?: Array<Record<string, unknown>>;
   methodology?: { pagesCrawled: number };
 }
 
@@ -96,25 +118,24 @@ export default function AuditDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { token } = useAuth();
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['audit', id],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/audit/${id}`, {
+      const response = await fetch(`${AUDIT_DETAIL_CONFIG.API.BASE}${AUDIT_DETAIL_CONFIG.API.ENDPOINTS.AUDIT}/${id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch audit details');
       return response.json() as Promise<AuditDetailData>;
     },
     enabled: !!token && !!id,
-    staleTime: 0, // Always consider data stale
-    gcTime: 0, // Disable caching - always refetch fresh data
+    staleTime: AUDIT_DETAIL_CONFIG.QUERY.STALE_TIME,
+    gcTime: AUDIT_DETAIL_CONFIG.QUERY.GC_TIME,
     refetchInterval: (query) => {
       // Poll every 2 seconds while data is still loading/empty
       const checksCount = query.state.data?.audit?.auditResults?.checks?.length ?? 0;
-      const hasValidData = checksCount > 50; // Audit complete when we have 50+ checks
-      return hasValidData ? false : 2000; // Stop polling once data arrives
+      const hasValidData = checksCount > AUDIT_DETAIL_CONFIG.QUERY.MIN_CHECKS_FOR_COMPLETION;
+      return hasValidData ? false : AUDIT_DETAIL_CONFIG.QUERY.POLL_INTERVAL;
     },
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true, // Refetch when returning to window
@@ -133,7 +154,7 @@ export default function AuditDetailPage() {
   if (error || !data) {
     return (
       <div className="container mx-auto py-8">
-        <Button variant="outline" onClick={() => navigate('/results')} className="mb-4">
+        <Button variant="outline" onClick={() => navigate(AUDIT_DETAIL_CONFIG.ROUTES.RESULTS)} className="mb-4">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Results
         </Button>
         <Card className="border-red-200 bg-red-50">
@@ -231,7 +252,7 @@ export default function AuditDetailPage() {
     <div className="container mx-auto py-8 space-y-6" key={`audit-detail-${id}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => navigate('/results')}>
+        <Button variant="outline" onClick={() => navigate(AUDIT_DETAIL_CONFIG.ROUTES.RESULTS)}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Results
         </Button>
         <div className="text-right">

@@ -8,6 +8,39 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 
+/**
+ * Audit log page configuration
+ * Contains API settings, query caching, and storage keys
+ */
+const AUDIT_LOG_CONFIG = {
+  API: {
+    BASE: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
+    ENDPOINTS: {
+      AUDITS: '/audit',
+    },
+    HEADERS: {
+      AUTHORIZATION: 'Authorization',
+      CONTENT_TYPE: 'Content-Type',
+      CONTENT_TYPE_VALUE: 'application/json',
+    },
+  },
+  QUERY: {
+    STALE_TIME: 5 * 60 * 1000, // 5 minutes
+    GC_TIME: 30 * 60 * 1000, // 30 minutes
+  },
+  STORAGE: {
+    COMPLETED_AUDIT: 'completedAudit',
+  },
+  FILTERS: {
+    DATE_OPTIONS: {
+      ALL: 'all',
+      TODAY: 'today',
+      WEEK: 'week',
+      MONTH: 'month',
+    },
+  },
+};
+
 interface AuditLogEntry {
   _id: string;
   auditUrl: string;
@@ -21,21 +54,20 @@ interface AuditLogEntry {
 export default function AuditLogPage() {
   const { token } = useAuth();
   const navigate = useNavigate();
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
   // State for audit completion modal
   const [completedAuditId, setCompletedAuditId] = useState<string | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month'
+  const [dateFilter, setDateFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.ALL);
 
   const { data: logs, isLoading, error } = useQuery({
     queryKey: ['audit-logs'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/audit`, {
+      const response = await fetch(`${AUDIT_LOG_CONFIG.API.BASE}${AUDIT_LOG_CONFIG.API.ENDPOINTS.AUDITS}`, {
         headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          [AUDIT_LOG_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
+          [AUDIT_LOG_CONFIG.API.HEADERS.CONTENT_TYPE]: AUDIT_LOG_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
         },
       });
       if (!response.ok) {
@@ -51,8 +83,8 @@ export default function AuditLogPage() {
       );
     },
     enabled: !!token, // Only run if we have a token
-    staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh for 5 min
-    gcTime: 30 * 60 * 1000, // 30 minutes - cached data persists for 30 min
+    staleTime: AUDIT_LOG_CONFIG.QUERY.STALE_TIME,
+    gcTime: AUDIT_LOG_CONFIG.QUERY.GC_TIME,
     refetchOnWindowFocus: false, // Don't refetch when window regains focus
     refetchOnReconnect: false, // Don't refetch on reconnect
   });
@@ -73,7 +105,7 @@ export default function AuditLogPage() {
     
     // Also listen for storage changes from other tabs/windows
     const handleStorageChange = () => {
-      const completedAudit = localStorage.getItem('completedAudit');
+      const completedAudit = localStorage.getItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
       if (completedAudit) {
         try {
           const auditData = JSON.parse(completedAudit);
@@ -96,14 +128,14 @@ export default function AuditLogPage() {
   // Handle completion modal actions
   const handleViewResults = () => {
     if (completedAuditId) {
-      localStorage.removeItem('completedAudit');
+      localStorage.removeItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
       setShowCompletionModal(false);
       navigate(`/audit/${completedAuditId}`);
     }
   };
 
   const handleStayOnPage = () => {
-    localStorage.removeItem('completedAudit');
+    localStorage.removeItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
     setShowCompletionModal(false);
   };
 
@@ -133,16 +165,16 @@ export default function AuditLogPage() {
     const monthAgo = new Date(today);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
 
-    if (dateFilter !== 'all') {
+    if (dateFilter !== AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.ALL) {
       filtered = filtered.filter((log: AuditLogEntry) => {
         const logDate = new Date(log.createdAt);
         const logDateOnly = new Date(logDate.getFullYear(), logDate.getMonth(), logDate.getDate());
 
-        if (dateFilter === 'today') {
+        if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.TODAY) {
           return logDateOnly.getTime() === today.getTime();
-        } else if (dateFilter === 'week') {
+        } else if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
           return logDateOnly >= weekAgo && logDateOnly <= today;
-        } else if (dateFilter === 'month') {
+        } else if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
           return logDateOnly >= monthAgo && logDateOnly <= today;
         }
         return true;

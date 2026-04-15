@@ -2,30 +2,68 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const auditRoute = require('./routes/auditRoute');
 const authRoute = require('./routes/authRoute');
 const dashboardRoute = require('./routes/dashboardRoute');
 const { connectDB } = require('./config/db');
+const { suspiciousRequestDetector } = require('./middleware/rateLimiter');
+
+/**
+ * Validate that required environment variables are set
+ * @throws {Error} If critical environment variables are missing
+ */
+const validateEnvironment = () => {
+  const requiredVars = ['MONGODB_URI'];
+  const missingVars = requiredVars.filter((v) => !process.env[v]);
+
+  if (missingVars.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missingVars.join(', ')}\nPlease check your .env file.`
+    );
+  }
+
+  // Warn about optional but recommended variables
+  const recommendedVars = ['SMTP_HOST', 'SESSION_SECRET', 'JWT_SECRET'];
+  const missingRecommended = recommendedVars.filter((v) => !process.env[v]);
+
+  if (missingRecommended.length > 0) {
+    console.warn(
+      `[Server] Optional security variables not configured: ${missingRecommended.join(', ')}\nSome features may not work properly.`
+    );
+  }
+};
+
+// Server configuration constants
+const SERVER_CONFIG = {
+  PORT: Number(process.env.PORT) || 4000,
+  REQUEST_TIMEOUT_MS: Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000, // 10 minutes
+  JSON_BODY_LIMIT: '50mb', // Support large audit report downloads
+  KEEP_ALIVE_TIMEOUT_MS: Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000,
+  HEADERS_TIMEOUT_MS: (Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000) + 5000,
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS: 10 * 1000, // 10 second force-shutdown timeout
+};
 
 const app = express();
-const PORT = Number(process.env.PORT) || 4000;
 
-// Increase timeout for long-running audits (10 minutes)
-const SERVER_TIMEOUT_MS = Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000;
-
-app.use(cors());
-// Increased limit: audit responses with base64 XLSX/PDF can exceed 1mb
-app.use(express.json({ limit: '50mb' }));
-
-// Apply timeout to all requests
-app.use((req, res, next) => {
-  res.setTimeout(SERVER_TIMEOUT_MS, () => {
+/**
+ * Request timeout middleware
+ * Prevents long-running requests from hanging indefinitely
+ */
+const requestTimeoutMiddleware = (req, res, next) => {
+  res.setTimeout(SERVER_CONFIG.REQUEST_TIMEOUT_MS, () => {
+    console.warn('[Server] Request timeout for', req.method, req.path);
     res.status(408).json({ error: 'Request timed out.' });
   });
   next();
-});
+};
 
-app.get('/health', (_req, res) => {
+/**
+ * Health check endpoint
+ * Returns server status, PID, uptime, and memory usage
+ */
+const healthCheckHandler = (_req, res) => {
   res.status(200).json({
     status: 'ok',
     service: 'gwt-audit-backend',
@@ -33,63 +71,157 @@ app.get('/health', (_req, res) => {
     uptime: Math.round(process.uptime()),
     memory: process.memoryUsage().rss,
   });
-});
+};
 
-// Register routes
-// Auth routes don't need authentication (login/logout/verify)
-app.use('/api/auth', authRoute);
-
-// Protected routes (require authentication from here)
-app.use('/api/dashboard', dashboardRoute);
-app.use('/api/audit', auditRoute);
-
-app.use((err, _req, res, _next) => {
-  console.error('[MASID] Unhandled error:', err?.message);
-  res.status(500).json({
+/**
+ * Global error handler middleware
+ * Catches all unhandled route errors
+ */
+const errorHandler = (err, _req, res, _next) => {
+  console.error('[Server] Unhandled error:', err?.message);
+  res.status(err.statusCode || 500).json({
     error: err?.message || 'Internal server error.',
   });
-});
+};
 
-// Connect to MongoDB and start server
-async function startServer() {
-  try {
-    await connectDB();
+/**
+ * Setup platform middleware (CORS, body parsing, timeout, security headers)
+ */
+const setupMiddleware = () => {
+  // Security headers (helmet) - MUST come before other middleware
+  app.use(helmet());
 
-    const server = app.listen(PORT, () => {
-      console.log(`[GWT] Backend listening on port ${PORT} (PID: ${process.pid})`);
-      // Signal PM2 the app is ready
-      if (process.send) process.send('ready');
+  // Bot/suspicious request detection middleware
+  app.use(suspiciousRequestDetector);
+
+  // CORS with secure configuration
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+    : ['http://localhost:5173'];
+
+  app.use(
+    cors({
+      origin: allowedOrigins,
+      credentials: true, // Allow cookies
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      maxAge: 3600, // Preflight cache 1 hour
+    })
+  );
+
+  // Parse cookies (for httpOnly session cookies)
+  app.use(cookieParser());
+
+  // Body parsing
+  app.use(express.json({ limit: SERVER_CONFIG.JSON_BODY_LIMIT }));
+
+  // Request timeout
+  app.use(requestTimeoutMiddleware);
+
+  // Log middleware (development only)
+  if (process.env.NODE_ENV === 'development') {
+    app.use((req, res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+      next();
+    });
+  }
+};
+
+/**
+ * Register application routes
+ */
+const setupRoutes = () => {
+  // Auth routes (no authentication required)
+  app.use('/api/auth', authRoute);
+
+  // Protected routes (require authentication)
+  app.use('/api/dashboard', dashboardRoute);
+  app.use('/api/audit', auditRoute);
+
+  // Health check (can be public for monitoring)
+  app.get('/health', healthCheckHandler);
+
+  // Global error handler (must be last)
+  app.use(errorHandler);
+};
+
+/**
+ * Setup graceful shutdown sequence
+ * Allows in-flight requests to complete before hard shutdown
+ */
+const setupGracefulShutdown = (server) => {
+  const shutdown = (signal) => {
+    console.log(`[Server] ${signal} received — shutting down gracefully...`);
+
+    server.close(() => {
+      console.log('[Server] HTTP server closed. All connections terminated.');
+      process.exit(0);
     });
 
-    // Keep connections alive for long audits
-    server.keepAliveTimeout = SERVER_TIMEOUT_MS;
-    server.headersTimeout = SERVER_TIMEOUT_MS + 5000;
+    // Force shutdown after timeout
+    setTimeout(() => {
+      console.error('[Server] Forced shutdown after timeout.');
+      process.exit(1);
+    }, SERVER_CONFIG.GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+  };
 
-    // Graceful shutdown — lets in-flight audits finish on pm2 stop/restart
-    function gracefulShutdown(signal) {
-      console.log(`[GWT] ${signal} received — shutting down gracefully...`);
-      server.close(() => {
-        console.log('[GWT] HTTP server closed. Exiting.');
-        process.exit(0);
-      });
-      setTimeout(() => {
-        console.error('[GWT] Forced shutdown after timeout.');
-        process.exit(1);
-      }, 10000);
-    }
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+};
 
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+/**
+ * Setup server timeout configurations
+ * Ensures long-running audits don't get terminated prematurely
+ */
+const setupServerTimeouts = (server) => {
+  server.keepAliveTimeout = SERVER_CONFIG.KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = SERVER_CONFIG.HEADERS_TIMEOUT_MS;
+};
+
+/**
+ * Handle unhandled promise rejections
+ */
+const setupProcessErrorHandlers = () => {
+  process.on('unhandledRejection', (reason) => {
+    console.error('[Server] Unhandled rejection in promise:', reason);
+  });
+};
+
+/**
+ * Start Express server
+ */
+async function startServer() {
+  try {
+    // Validate environment first
+    validateEnvironment();
+
+    // Connect to database
+    await connectDB();
+
+    // Setup application
+    setupMiddleware();
+    setupRoutes();
+    setupProcessErrorHandlers();
+
+    // Start listening
+    const server = app.listen(SERVER_CONFIG.PORT, () => {
+      console.log(`[GWT] Backend listening on port ${SERVER_CONFIG.PORT} (PID: ${process.pid})`);
+      console.log(`[GWT] Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`[GWT] CORS Origins: ${process.env.ALLOWED_ORIGINS || 'http://localhost:5173'}`);
+      // Signal PM2 the app is ready
+      if (process.send) {
+        process.send('ready');
+      }
+    });
+
+    // Configure server behavior
+    setupServerTimeouts(server);
+    setupGracefulShutdown(server);
   } catch (error) {
-    console.error('[GWT] Failed to start server:', error.message);
+    console.error('[Server] Failed to start:', error.message);
     process.exit(1);
   }
 }
-
-
-process.on('unhandledRejection', (reason) => {
-  console.error('[GWT] Unhandled rejection:', reason);
-});
 
 // Start the server
 startServer();

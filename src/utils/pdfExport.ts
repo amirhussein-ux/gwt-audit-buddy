@@ -3,6 +3,29 @@
  * Generates professional compliance reports with KPIs, insights, and visualizations
  */
 
+// Constants
+const PDF_CONFIG = {
+  CHART_RENDER_DELAY: 500, // ms to wait for chart to fully render
+  CANVAS_OPTIONS: {
+    SCALE: 2,
+    BACKGROUND_COLOR: '#ffffff',
+    USE_CORS: true,
+    ALLOW_TAINT: true,
+    LOGGING: false,
+  },
+  JSPDF_OPTIONS: {
+    orientation: 'portrait' as const,
+    unit: 'mm' as const,
+    format: 'a4' as const,
+  },
+  MARGINS: {
+    TOP: 15,
+    BOTTOM: 15,
+    LEFT: 10,
+    RIGHT: 10,
+  },
+};
+
 interface PDFMetadata {
   period?: string;
   statistics?: {
@@ -30,29 +53,25 @@ export async function generatePDF(
     const html2canvas = html2canvasModule.default;
 
     // Wait for chart to fully render
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, PDF_CONFIG.CHART_RENDER_DELAY));
 
     // Capture the element
     const canvas = await html2canvas(element, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
+      backgroundColor: PDF_CONFIG.CANVAS_OPTIONS.BACKGROUND_COLOR,
+      scale: PDF_CONFIG.CANVAS_OPTIONS.SCALE,
+      useCORS: PDF_CONFIG.CANVAS_OPTIONS.USE_CORS,
+      allowTaint: PDF_CONFIG.CANVAS_OPTIONS.ALLOW_TAINT,
+      logging: PDF_CONFIG.CANVAS_OPTIONS.LOGGING,
     });
 
     const imgData = canvas.toDataURL('image/png');
 
     // Create PDF - Portrait with more space for content
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    });
+    const pdf = new jsPDF(PDF_CONFIG.JSPDF_OPTIONS);
 
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
-    let yPosition = 15;
+    let yPosition = PDF_CONFIG.MARGINS.TOP;
 
     // ========== Page 1: Title and Summary ==========
 

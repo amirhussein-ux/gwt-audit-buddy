@@ -1,10 +1,21 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 
-/**
- * User Schema - Shared Account Authentication for MASID
- * Supports role-based access control for government agencies
- */
+// Security configuration constants
+const SECURITY_CONFIG = {
+  BCRYPT_ROUNDS: 12, // Cost factor for bcrypt (higher = more secure but slower)
+  ACCOUNT_LOCKOUT_CONFIG: {
+    MAX_ATTEMPTS: 5,
+    LOCK_DURATION_MS: 30 * 60 * 1000, // 30 minutes
+  },
+  EMAIL_VERIFICATION_EXPIRES_MS: 24 * 60 * 60 * 1000, // 24 hours
+  PASSWORD_RESET_EXPIRES_MS: 15 * 60 * 1000, // 15 minutes
+};
+
+// Validation regex patterns
+const VALIDATION_PATTERNS = {
+  EMAIL: /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+};
 const userSchema = new mongoose.Schema(
   {
     username: {
@@ -19,7 +30,7 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
-      match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email'],
+      match: [VALIDATION_PATTERNS.EMAIL, 'Please provide a valid email'],
     },
     hashedPassword: {
       type: String,
@@ -42,6 +53,29 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+      description: 'Whether email has been verified',
+    },
+    emailVerificationToken: {
+      type: String,
+      select: false,
+      description: 'Token for email verification (expires in 24 hours)',
+    },
+    emailVerificationTokenExpires: {
+      type: Date,
+      select: false,
+    },
+    passwordResetToken: {
+      type: String,
+      select: false,
+      description: 'Token for password reset (expires in 15 minutes)',
+    },
+    passwordResetTokenExpires: {
+      type: Date,
+      select: false,
+    },
     lastLogin: {
       type: Date,
       default: null,
@@ -63,6 +97,7 @@ const userSchema = new mongoose.Schema(
 
 /**
  * Hash password before saving (middleware)
+ * Uses bcrypt for secure password hashing
  */
 userSchema.pre('save', async function () {
   // Only hash if password is new or modified
@@ -70,22 +105,103 @@ userSchema.pre('save', async function () {
     return;
   }
 
-  const salt = crypto.randomBytes(10).toString('hex');
-  const hash = crypto.pbkdf2Sync(this.hashedPassword, salt, 1000, 64, 'sha512').toString('hex');
-  this.hashedPassword = `${salt}:${hash}`;
+  try {
+    this.hashedPassword = await bcrypt.hash(this.hashedPassword, SECURITY_CONFIG.BCRYPT_ROUNDS);
+  } catch (error) {
+    console.error('[User] Password hashing error:', error.message);
+    throw error;
+  }
 });
 
 /**
- * Compare password method
+ * Compare password method (bcrypt)
+ * @param {string} candidatePassword - Plain text password to verify
+ * @returns {Promise<boolean>} Whether password matches
  */
-userSchema.methods.comparePassword = function (candidatePassword) {
-  const [salt, hash] = this.hashedPassword.split(':');
-  const candidateHash = crypto.pbkdf2Sync(candidatePassword, salt, 1000, 64, 'sha512').toString('hex');
-  return hash === candidateHash;
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  if (!candidatePassword || typeof candidatePassword !== 'string' || !this.hashedPassword) {
+    return false;
+  }
+
+  try {
+    return await bcrypt.compare(candidatePassword, this.hashedPassword);
+  } catch (error) {
+    console.error('[User] Password comparison error:', error.message);
+    return false;
+  }
 };
 
 /**
- * Update last login
+ * Generate email verification token
+ * @returns {string} Verification token
+ */
+userSchema.methods.generateEmailVerificationToken = function () {
+  const token = require('crypto').randomBytes(32).toString('hex');
+  this.emailVerificationToken = token;
+  this.emailVerificationTokenExpires = new Date(
+    Date.now() + SECURITY_CONFIG.EMAIL_VERIFICATION_EXPIRES_MS
+  );
+  return token;
+};
+
+/**
+ * Verify email verification token and mark email as verified
+ * @param {string} token - Token to verify
+ * @returns {Promise<boolean>} Whether token was valid and email verified
+ */
+userSchema.methods.verifyEmailToken = async function (token) {
+  if (
+    this.emailVerificationToken !== token ||
+    new Date() > this.emailVerificationTokenExpires
+  ) {
+    return false;
+  }
+
+  this.isEmailVerified = true;
+  this.emailVerificationToken = undefined;
+  this.emailVerificationTokenExpires = undefined;
+  await this.save();
+  return true;
+};
+
+/**
+ * Generate password reset token
+ * @returns {string} Password reset token
+ */
+userSchema.methods.generatePasswordResetToken = function () {
+  const token = require('crypto').randomBytes(32).toString('hex');
+  this.passwordResetToken = token;
+  this.passwordResetTokenExpires = new Date(
+    Date.now() + SECURITY_CONFIG.PASSWORD_RESET_EXPIRES_MS
+  );
+  return token;
+};
+
+/**
+ * Verify password reset token validity
+ * @param {string} token - Token to verify
+ * @returns {boolean} Whether token is valid and not expired
+ */
+userSchema.methods.isPasswordResetTokenValid = function (token) {
+  return (
+    this.passwordResetToken === token &&
+    new Date() <= this.passwordResetTokenExpires
+  );
+};
+
+/**
+ * Clear password reset token after use
+ * @returns {Promise<Object>} Updated user document
+ */
+userSchema.methods.clearPasswordResetToken = async function () {
+  this.passwordResetToken = undefined;
+  this.passwordResetTokenExpires = undefined;
+  return this.save();
+};
+
+/**
+ * Update last login timestamp and clear lockout
+ * @returns {Promise<Object>} Updated user document
  */
 userSchema.methods.updateLastLogin = async function () {
   this.lastLogin = new Date();
@@ -95,28 +211,33 @@ userSchema.methods.updateLastLogin = async function () {
 };
 
 /**
- * Increment failed login attempts
+ * Increment failed login attempts and lock account if threshold exceeded
+ * @returns {Promise<Object>} Updated user document
  */
 userSchema.methods.recordFailedLogin = async function () {
   this.loginAttempts = (this.loginAttempts || 0) + 1;
 
-  // Lock account after 5 failed attempts for 30 minutes
-  if (this.loginAttempts >= 5) {
-    this.lockUntil = new Date(Date.now() + 30 * 60 * 1000);
+  // Lock account after exceeding max attempts
+  if (this.loginAttempts >= SECURITY_CONFIG.ACCOUNT_LOCKOUT_CONFIG.MAX_ATTEMPTS) {
+    this.lockUntil = new Date(
+      Date.now() + SECURITY_CONFIG.ACCOUNT_LOCKOUT_CONFIG.LOCK_DURATION_MS
+    );
   }
 
   return this.save();
 };
 
 /**
- * Check if account is locked
+ * Check if account is currently locked
+ * @returns {boolean} Whether account is locked
  */
 userSchema.methods.isLocked = function () {
   return this.lockUntil && this.lockUntil > new Date();
 };
 
 /**
- * Unlock account
+ * Unlock account and clear failed login attempts
+ * @returns {Promise<Object>} Updated user document
  */
 userSchema.methods.unlock = async function () {
   this.loginAttempts = 0;

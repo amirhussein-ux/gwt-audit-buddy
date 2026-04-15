@@ -1,38 +1,47 @@
-/**
- * MANUAL ACCOUNT INSERTION REFERENCE
- * 
- * Pre-made accounts are manually added to MongoDB (not auto-seeded).
- * 
- * See MANUAL_ACCOUNT_SETUP.md for complete MongoDB insertion instructions.
- * 
- * Account Format:
- * - Email: username@dict.gov.ph
- * - Default Password: changeme123
- * - Roles: admin, auditor, viewer
- * 
- * To manually insert accounts:
- * 1. Connect to MongoDB directly
- * 2. Use the insertion commands in MANUAL_ACCOUNT_SETUP.md
- * 3. Or use MongoDB Compass/Atlas UI to insert documents
- * 
- * Example MongoDB Document Structure:
- * {
- *   "username": "admin",
- *   "email": "admin@dict.gov.ph",
- *   "hashedPassword": "[hashed]",  // Will be hashed on save via User model
- *   "role": "admin",
- *   "isActive": true,
- *   "loginAttempts": 0,
- *   "createdAt": ISODate,
- *   "updatedAt": ISODate
- * }
- * 
- * Password Hashing:
- * - Passwords are automatically hashed via User.js pre-save middleware
- * - Plain text passwords can be inserted; they will be hashed on first use
- * - Never store plain text passwords directly
- */
+require('dotenv').config();
+const mongoose = require('mongoose');
+const User = require('./src/models/User');
 
-console.log('ℹ️  Pre-made accounts are managed manually via MongoDB.');
-console.log('📖 See MANUAL_ACCOUNT_SETUP.md for insertion instructions.');
-console.log('📖 See PRE_MADE_ACCOUNTS.md for account list and credentials.');
+async function seedDemoUser() {
+  try {
+    // Connect to MongoDB
+    console.log('[Seed] Connecting to MongoDB...');
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    console.log('[Seed] ✓ Connected to MongoDB');
+
+    // Check if demo user already exists and delete it
+    const existingUser = await User.findOne({ email: 'user@dict.gov.ph' });
+    if (existingUser) {
+      await User.deleteOne({ email: 'user@dict.gov.ph' });
+      console.log('[Seed] ℹ️  Removed old demo user');
+    }
+
+    // Create pre-verified demo user
+    const demoUser = new User({
+      username: 'demo_user',
+      email: 'user@dict.gov.ph',
+      hashedPassword: 'Temporary1234', // Will be auto-hashed by pre-save middleware
+      role: 'auditor',
+      isActive: true,
+      isEmailVerified: true, // Pre-verified for demo
+    });
+
+    await demoUser.save();
+    console.log('[Seed] ✓ Demo user created successfully');
+    console.log('       Email: user@dict.gov.ph');
+    console.log('       Password: Temporary1234');
+    console.log('       Role: auditor');
+    console.log('       Email Verified: YES');
+
+    await mongoose.disconnect();
+    console.log('[Seed] ✓ Disconnected from MongoDB');
+  } catch (error) {
+    console.error('[Seed] ✗ Error:', error.message);
+    await mongoose.disconnect();
+    process.exit(1);
+  }
+}
+
+seedDemoUser();

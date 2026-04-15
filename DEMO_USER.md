@@ -1,51 +1,44 @@
-# Demo User - Quick Navigation
+# Demo User Setup Guide
 
-Quick credentials for testing and navigating the GWT Audit System.
-
-## Demo Account
-
-| Field | Value |
-|-------|-------|
-| **Username** | Amir Macakiling |
-| **Email** | user@dict.gov.ph |
-| **Password** | Temporary123@ |
-| **Role** | Flexible Access |
+⚠️ **SECURITY NOTICE**: Demo credentials are **NOT** stored in this file. See setup instructions below.
 
 ---
 
-## Quick Login
+## Quick Setup
 
-### Frontend Login
-1. Navigate to the login page
-2. Enter credentials:
-   - **Email**: `user@dict.gov.ph`
-   - **Password**: `Temporary123@`
-3. Click **Login**
+To get demo credentials for testing:
 
-### API Test Login
-
+### Option 1: Run the Setup Script (Recommended)
 ```bash
-curl -X POST http://localhost:4000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "Amir Macakiling",
-    "password": "Temporary123@"
-  }'
+cd backend
+node seed.js
 ```
 
-**Response:**
-```json
-{
-  "token": "abc123...",
-  "user": {
-    "id": "...",
-    "username": "Amir Macakiling",
-    "email": "user@dict.gov.ph",
-    "role": "..."
-  },
-  "expiresIn": "24h"
-}
+This creates a pre-configured demo user with verified email. Check the console output for credentials.
+
+### Option 2: Use Environment Variables
+Demo credentials can be configured via environment variables:
+- `VITE_DEMO_EMAIL` - Demo user email
+- `VITE_DEMO_PASSWORD` - Demo user password
+- `VITE_SHOW_DEMO_CREDENTIALS` - Show demo credentials box (set to "true" in dev only)
+
+Set these in `.env.local` (never commit to git):
+```env
+VITE_DEMO_EMAIL=user@dict.gov.ph
+VITE_DEMO_PASSWORD=YourSecurePassword123!
+VITE_SHOW_DEMO_CREDENTIALS=true
 ```
+
+---
+
+## Manual MongoDB Insertion
+
+For manual setup, see [MANUAL_ACCOUNT_SETUP.md](MANUAL_ACCOUNT_SETUP.md).
+
+**Important**: 
+- Never commit real credentials to version control
+- Change demo passwords immediately in production
+- Use strong, unique passwords for each environment
 
 ---
 

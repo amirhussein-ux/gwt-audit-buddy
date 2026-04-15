@@ -8,6 +8,45 @@ import { CheckCircle, ArrowRight, Search, Calendar } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 
+/**
+ * Results page configuration
+ * Contains API settings, query caching, pagination, and storage keys
+ */
+const RESULTS_CONFIG = {
+  API: {
+    BASE: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
+    ENDPOINTS: {
+      AUDITS: '/audit',
+    },
+    HEADERS: {
+      AUTHORIZATION: 'Authorization',
+      CONTENT_TYPE: 'Content-Type',
+      CONTENT_TYPE_VALUE: 'application/json',
+    },
+  },
+  QUERY: {
+    STALE_TIME: 5 * 60 * 1000, // 5 minutes
+    GC_TIME: 30 * 60 * 1000, // 30 minutes
+  },
+  STORAGE: {
+    COMPLETED_AUDIT: 'completedAudit',
+  },
+  PAGINATION: {
+    ITEMS_PER_PAGE: 10,
+  },
+  FILTERS: {
+    DATE_OPTIONS: {
+      ALL: 'all',
+      TODAY: 'today',
+      WEEK: 'week',
+      MONTH: 'month',
+    },
+  },
+  ROUTES: {
+    AUDIT: '/audit',
+  },
+};
+
 interface AuditResult {
   _id: string;
   auditUrl: string;
@@ -20,23 +59,21 @@ interface AuditResult {
 export default function ResultsPage() {
   const navigate = useNavigate();
   const { token } = useAuth();
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   
   // State for audit completion modal
   const [completedAuditId, setCompletedAuditId] = useState<string | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month'
+  const [dateFilter, setDateFilter] = useState(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   const { data: audits, isLoading, error } = useQuery({
     queryKey: ['audits'],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/audit`, {
+      const response = await fetch(`${RESULTS_CONFIG.API.BASE}${RESULTS_CONFIG.API.ENDPOINTS.AUDITS}`, {
         headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          [RESULTS_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
+          [RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE]: RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
         },
       });
       if (!response.ok) {
@@ -48,8 +85,8 @@ export default function ResultsPage() {
       return result.audits || [];
     },
     enabled: !!token, // Only run if we have a token
-    staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh for 5 min
-    gcTime: 30 * 60 * 1000, // 30 minutes - cached data persists for 30 min
+    staleTime: RESULTS_CONFIG.QUERY.STALE_TIME,
+    gcTime: RESULTS_CONFIG.QUERY.GC_TIME,
     refetchOnWindowFocus: false, // Don't refetch when window regains focus
     refetchOnReconnect: false, // Don't refetch on reconnect
   });
@@ -70,7 +107,7 @@ export default function ResultsPage() {
     
     // Also listen for storage changes from other tabs/windows
     const handleStorageChange = () => {
-      const completedAudit = localStorage.getItem('completedAudit');
+      const completedAudit = localStorage.getItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
       if (completedAudit) {
         try {
           const auditData = JSON.parse(completedAudit);
@@ -93,9 +130,9 @@ export default function ResultsPage() {
   // Handle completion modal actions
   const handleViewResults = () => {
     if (completedAuditId) {
-      localStorage.removeItem('completedAudit');
+      localStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
       setShowCompletionModal(false);
-      navigate(`/audit/${completedAuditId}`);
+      navigate(`${RESULTS_CONFIG.ROUTES.AUDIT}/${completedAuditId}`);
     }
   };
 
@@ -121,16 +158,16 @@ export default function ResultsPage() {
     const monthAgo = new Date(today);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
 
-    if (dateFilter !== 'all') {
+    if (dateFilter !== RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL) {
       filtered = filtered.filter((audit: AuditResult) => {
         const auditDate = new Date(audit.createdAt);
         const auditDateOnly = new Date(auditDate.getFullYear(), auditDate.getMonth(), auditDate.getDate());
 
-        if (dateFilter === 'today') {
+        if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.TODAY) {
           return auditDateOnly.getTime() === today.getTime();
-        } else if (dateFilter === 'week') {
+        } else if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
           return auditDateOnly >= weekAgo && auditDateOnly <= today;
-        } else if (dateFilter === 'month') {
+        } else if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
           return auditDateOnly >= monthAgo && auditDateOnly <= today;
         }
         return true;
@@ -141,9 +178,9 @@ export default function ResultsPage() {
   }, [audits, searchQuery, dateFilter]);
 
   // Calculate pagination
-  const totalPages = Math.ceil(filteredAudits.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
+  const totalPages = Math.ceil(filteredAudits.length / RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE;
+  const endIndex = startIndex + RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE;
   const paginatedAudits = filteredAudits.slice(startIndex, endIndex);
 
   // Reset to page 1 when filters change
@@ -151,7 +188,7 @@ export default function ResultsPage() {
     setCurrentPage(1);
   }, [searchQuery, dateFilter]);
   const handleStayOnPage = () => {
-    localStorage.removeItem('completedAudit');
+    localStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
     setShowCompletionModal(false);
   };
 
@@ -268,7 +305,7 @@ export default function ResultsPage() {
               <Button
                 onClick={() => {
                   setSearchQuery('');
-                  setDateFilter('all');
+                  setDateFilter(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
                 }}
               >
                 Reset Filters
@@ -349,7 +386,7 @@ export default function ResultsPage() {
           </div>
 
           {/* Pagination Controls */}
-          {filteredAudits.length > itemsPerPage && (
+          {filteredAudits.length > RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between pt-6 border-t">
               <div className="text-sm text-slate-600">
                 Showing {startIndex + 1}–{Math.min(endIndex, filteredAudits.length)} of {filteredAudits.length} results

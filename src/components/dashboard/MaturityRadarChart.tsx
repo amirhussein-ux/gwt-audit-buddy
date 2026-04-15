@@ -17,6 +17,49 @@ interface MaturityData {
   }>;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MATURITY_CONFIG = {
+  THRESHOLDS: {
+    EXCELLENT: 90,
+    GOOD: 75,
+    DEVELOPING: 50,
+    NEEDS_ATTENTION: 0,
+  },
+  TREND_THRESHOLD_UP: 75,
+  TREND_THRESHOLD_DOWN: 50,
+};
+
+const MATURITY_LEVELS = {
+  excellent: {
+    label: 'Excellent',
+    description: 'Meets or exceeds all GWT standards',
+    color: 'text-emerald-700',
+    bgColor: 'bg-emerald-50',
+    borderColor: 'border-emerald-300',
+  },
+  good: {
+    label: 'Good',
+    description: 'Mostly compliant with minor gaps',
+    color: 'text-blue-700',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-300',
+  },
+  developing: {
+    label: 'Developing',
+    description: 'Partially meets standards — improvement needed',
+    color: 'text-amber-700',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-300',
+  },
+  needsAttention: {
+    label: 'Needs Attention',
+    description: 'Significant gaps in GWT compliance',
+    color: 'text-red-700',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-300',
+  },
+};
+
 // ─── Plain-language explanations for non-technical users ─────────────────────
 const METRIC_META = {
   webPresence: {
@@ -70,46 +113,16 @@ const METRIC_META = {
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function getMaturityLabel(score: number): {
-  label: string;
-  description: string;
-  color: string;
-  bgColor: string;
-  borderColor: string;
-} {
-  if (score >= 90) return {
-    label: 'Excellent',
-    description: 'Meets or exceeds all GWT standards',
-    color: 'text-emerald-700',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-300',
-  };
-  if (score >= 75) return {
-    label: 'Good',
-    description: 'Mostly compliant with minor gaps',
-    color: 'text-blue-700',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-300',
-  };
-  if (score >= 50) return {
-    label: 'Developing',
-    description: 'Partially meets standards — improvement needed',
-    color: 'text-amber-700',
-    bgColor: 'bg-amber-50',
-    borderColor: 'border-amber-300',
-  };
-  return {
-    label: 'Needs Attention',
-    description: 'Significant gaps in GWT compliance',
-    color: 'text-red-700',
-    bgColor: 'bg-red-50',
-    borderColor: 'border-red-300',
-  };
+function getMaturityLabel(score: number) {
+  if (score >= MATURITY_CONFIG.THRESHOLDS.EXCELLENT) return MATURITY_LEVELS.excellent;
+  if (score >= MATURITY_CONFIG.THRESHOLDS.GOOD) return MATURITY_LEVELS.good;
+  if (score >= MATURITY_CONFIG.THRESHOLDS.DEVELOPING) return MATURITY_LEVELS.developing;
+  return MATURITY_LEVELS.needsAttention;
 }
 
 function getTrendIcon(score: number) {
-  if (score >= 75) return <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />;
-  if (score >= 50) return <Minus className="h-3.5 w-3.5 text-amber-500" />;
+  if (score >= MATURITY_CONFIG.TREND_THRESHOLD_UP) return <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />;
+  if (score >= MATURITY_CONFIG.TREND_THRESHOLD_DOWN) return <Minus className="h-3.5 w-3.5 text-amber-500" />;
   return <TrendingDown className="h-3.5 w-3.5 text-red-500" />;
 }
 
