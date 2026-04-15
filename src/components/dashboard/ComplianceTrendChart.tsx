@@ -1,11 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, CartesianGrid } from 'recharts';
 import { Download, TrendingUp, Award, AlertCircle, Info } from 'lucide-react';
 import { generatePDF } from '@/utils/pdfExport';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 
 interface ComplianceScoreData {
   data: Record<string, Array<{
@@ -95,7 +101,6 @@ export const ComplianceTrendChart = () => {
   const { token } = useAuth();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [selectedRange, setSelectedRange] = useState<string>('quarterly');
-  const chartRef = useRef<HTMLDivElement>(null);
   const [showGuide, setShowGuide] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -154,10 +159,8 @@ export const ComplianceTrendChart = () => {
   // Function to download chart as PDF
   const handleDownloadPDF = async () => {
     try {
-      if (!chartRef.current) return;
-
       const filename = `compliance-trend-${selectedRange}-${new Date().toISOString().split('T')[0]}.pdf`;
-      await generatePDF(chartRef.current, filename, {
+      await generatePDF(document.body, filename, {
         period: TIME_RANGES[selectedRange].label,
         statistics,
         insight: statistics.insight,
@@ -313,67 +316,68 @@ export const ComplianceTrendChart = () => {
         {/* Chart Section */}
         <div className="border-t pt-6">
           <h3 className="text-sm font-semibold mb-4 text-slate-900">Performance Trend</h3>
-          <div ref={chartRef} className="bg-white rounded-lg">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={350}>
-                <LineChart data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis 
-                    dataKey="formatted" 
-                    tick={{ fontSize: 12 }}
-                    angle={chartData.length > 30 ? -45 : 0}
-                  />
-                  <YAxis 
-                    domain={[0, 100]} 
-                    tick={{ fontSize: 12 }}
-                    label={{ value: 'Score (%)', angle: -90, position: 'insideLeft' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px',
-                      padding: '10px',
-                    }}
+          {chartData.length > 0 ? (
+            <ChartContainer 
+              config={{ 
+                average: { 
+                  label: 'Average Compliance Score', 
+                  color: 'var(--chart-1)' 
+                } 
+              } satisfies ChartConfig}
+              className="w-full h-80"
+            >
+              <LineChart 
+                data={chartData}
+                accessibilityLayer
+                margin={{
+                  left: 12,
+                  right: 12,
+                }}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis 
+                  dataKey="formatted" 
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => {
+                    try {
+                      const date = new Date(value);
+                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    } catch {
+                      return value.slice(0, 10);
+                    }
+                  }}
+                />
+                <ChartTooltip
+                  cursor={false}
+                  content={<ChartTooltipContent 
+                    hideLabel 
                     formatter={(value: number) => [
                       `${value.toFixed(1)}% - ${
                         value >= 80 ? 'Excellent' : value >= 50 ? 'Moderate' : 'Needs Improvement'
                       }`,
                       'Compliance Score',
                     ]}
-                    labelFormatter={(label) => `Date: ${label}`}
-                  />
-                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                  <ReferenceLine 
-                    y={80} 
-                    stroke="#22c55e" 
-                    strokeDasharray="5 5" 
-                    label={{ value: 'Excellent (80%)', position: 'left', fill: '#22c55e', fontSize: 11 }} 
-                  />
-                  <ReferenceLine 
-                    y={50} 
-                    stroke="#f59e0b" 
-                    strokeDasharray="5 5" 
-                    label={{ value: 'Threshold (50%)', position: 'left', fill: '#f59e0b', fontSize: 11 }} 
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="average"
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={true}
-                    name="Average Compliance Score"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-slate-500">
-                <AlertCircle className="h-5 w-5 mr-2" />
-                No trend data available yet
-              </div>
-            )}
-          </div>
+                  />}
+                />
+                <Line
+                  dataKey="average"
+                  type="monotone"
+                  stroke="hsl(var(--chart-1))"
+                  strokeWidth={2}
+                  dot={{ fill: 'hsl(var(--chart-1))', r: 4 }}
+                  isAnimationActive={true}
+                  name="Average Compliance Score"
+                />
+              </LineChart>
+            </ChartContainer>
+          ) : (
+            <div className="h-80 flex items-center justify-center text-slate-500">
+              <AlertCircle className="h-5 w-5 mr-2" />
+              No trend data available yet
+            </div>
+          )}
         </div>
 
         {/* Additional Insights */}

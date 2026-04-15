@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Lock, User } from 'lucide-react';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,7 +28,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login(username, password);
+      await login(email, password);
       navigate('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -67,18 +67,19 @@ export default function LoginPage() {
                 </Alert>
               )}
 
-              {/* Username Field */}
+              {/* Email Field */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200">Username</label>
+                <label className="text-sm font-medium text-slate-200">Email</label>
                 <div className="relative">
                   <User className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" />
                   <Input
-                    type="text"
-                    placeholder="Enter username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    type="email"
+                    placeholder="name@dict.gov.ph"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
                     className="pl-10 bg-slate-700 border-slate-600 text-white placeholder-slate-400"
+                    required
                   />
                 </div>
               </div>
@@ -102,7 +103,7 @@ export default function LoginPage() {
               {/* Login Button */}
               <Button
                 type="submit"
-                disabled={isLoading || !username || !password}
+                disabled={isLoading || !email || !password}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
                 {isLoading ? 'Signing in...' : 'Sign In'}
@@ -113,10 +114,13 @@ export default function LoginPage() {
             <div className="mt-6 p-3 bg-slate-700 rounded-lg border border-slate-600">
               <p className="text-sm font-medium text-slate-200 mb-2">Demo Credentials:</p>
               <p className="text-xs text-slate-400">
-                <strong>Username:</strong> admin <br />
-                <strong>Password:</strong> changeme123
+                <strong>Email:</strong> user@dict.gov.ph <br />
+                <strong>Password:</strong> Temporary123@
               </p>
               <p className="text-xs text-slate-500 mt-2">
+                User: Amir Macakiling
+              </p>
+              <p className="text-xs text-slate-500">
                 ⚠️ Change password immediately in production
               </p>
             </div>

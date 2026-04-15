@@ -13,7 +13,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   verifySession: () => Promise<boolean>;
 }
@@ -52,16 +52,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []); // Only run once on mount
 
   /**
-   * Login with username and password
+   * Login with email and password
    */
   const login = useCallback(
-    async (username: string, password: string) => {
+    async (email: string, password: string) => {
       setIsLoading(true);
       try {
         const response = await fetch(`${API_BASE}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ email, password }),
         });
 
         if (!response.ok) {

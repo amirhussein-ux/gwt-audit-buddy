@@ -1,12 +1,20 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Download, TrendingUp, Award, Info, Target } from 'lucide-react';
+import { Trophy, Medal, Download, Award, Info } from 'lucide-react';
 import { generateLeaderboardPDF } from '@/utils/leaderboardPdfExport';
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 
 interface LeaderboardEntry {
   rank: number;
@@ -101,7 +109,6 @@ export const AgencyLeaderboard = () => {
   const { token } = useAuth();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [showGuide, setShowGuide] = useState(false);
-  const chartRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['leaderboard'],
@@ -155,9 +162,8 @@ export const AgencyLeaderboard = () => {
 
   const handleDownloadPDF = async () => {
     try {
-      if (!chartRef.current) return;
       const filename = `agency-leaderboard-${new Date().toISOString().split('T')[0]}.pdf`;
-      await generateLeaderboardPDF(chartRef.current, filename, { leaderboard, stats });
+      await generateLeaderboardPDF(document.body, filename, { leaderboard, stats });
     } catch (error) {
       console.error('Error downloading PDF:', error);
       alert('Failed to export PDF. Please try again.');
@@ -288,46 +294,39 @@ export const AgencyLeaderboard = () => {
             {/* Chart Section */}
             <div className="border-t pt-6">
               <h3 className="text-sm font-semibold mb-4 text-slate-900">Compliance Rankings</h3>
-              <div ref={chartRef} className="bg-white rounded-lg">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="acronym" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      domain={[0, 100]}
-                      tick={{ fontSize: 12 }}
-                      label={{ value: 'Score (%)', angle: -90, position: 'insideLeft' }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        padding: '10px',
-                      }}
-                      formatter={(value: number) => {
-                        const tier = getAgencyTier(value);
-                        return [`${value.toFixed(1)}% — ${tier.label}`, 'Score'];
-                      }}
-                      labelFormatter={(label) => `Agency: ${label}`}
-                    />
-                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                    <ReferenceLine
-                      y={85}
-                      stroke="#22c55e"
-                      strokeDasharray="5 5"
-                      label={{ value: 'Elite (85%)', position: 'left', fill: '#22c55e', fontSize: 11 }}
-                    />
-                    <ReferenceLine
-                      y={70}
-                      stroke="#2563eb"
-                      strokeDasharray="5 5"
-                      label={{ value: 'Strong (70%)', position: 'left', fill: '#2563eb', fontSize: 11 }}
-                    />
-                    <Bar dataKey="score" fill="#2563eb" name="Compliance Score" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <ChartContainer 
+                config={{ 
+                  score: { 
+                    label: 'Compliance Score', 
+                    color: 'var(--chart-1)' 
+                  } 
+                } satisfies ChartConfig}
+                className="w-full h-80"
+              >
+                <BarChart data={chartData} accessibilityLayer>
+                  <CartesianGrid vertical={false} />
+                  <XAxis 
+                    dataKey="acronym" 
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
+                  />
+                  <ChartTooltip 
+                    content={<ChartTooltipContent hideLabel />}
+                    formatter={(value: number) => {
+                      const tier = getAgencyTier(value);
+                      return [`${value.toFixed(1)}% — ${tier.label}`, 'Score'];
+                    }}
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Bar 
+                    dataKey="score" 
+                    fill="var(--color-score)" 
+                    name="Compliance Score"
+                    radius={[8, 8, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
             </div>
 
             {/* Detailed Rankings List */}

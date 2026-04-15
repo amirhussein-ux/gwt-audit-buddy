@@ -6,25 +6,25 @@ const router = express.Router();
 
 /**
  * POST /auth/login
- * Authenticate user with username (shared account)
+ * Authenticate user with email (shared account)
  */
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
     // Validate input
-    if (!username || !password) {
+    if (!email || !password) {
       return res.status(400).json({
-        error: 'Username and password are required',
+        error: 'Email and password are required',
       });
     }
 
-    // Find user
-    const user = await User.findOne({ username, isActive: true }).select('+hashedPassword');
+    // Find user by email
+    const user = await User.findOne({ email, isActive: true }).select('+hashedPassword');
 
     if (!user) {
       return res.status(401).json({
-        error: 'Invalid username or password',
+        error: 'Invalid email or password',
       });
     }
 
@@ -43,7 +43,7 @@ router.post('/login', async (req, res) => {
     if (!passwordValid) {
       await user.recordFailedLogin();
       return res.status(401).json({
-        error: 'Invalid username or password',
+        error: 'Invalid email or password',
       });
     }
 

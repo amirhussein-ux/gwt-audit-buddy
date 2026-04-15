@@ -1,53 +1,38 @@
 /**
- * Seed Script for MASID Database
- * Initializes database with sample Philippine government agencies and default admin user
+ * MANUAL ACCOUNT INSERTION REFERENCE
  * 
- * Usage: node seed.js
+ * Pre-made accounts are manually added to MongoDB (not auto-seeded).
+ * 
+ * See MANUAL_ACCOUNT_SETUP.md for complete MongoDB insertion instructions.
+ * 
+ * Account Format:
+ * - Email: username@dict.gov.ph
+ * - Default Password: changeme123
+ * - Roles: admin, auditor, viewer
+ * 
+ * To manually insert accounts:
+ * 1. Connect to MongoDB directly
+ * 2. Use the insertion commands in MANUAL_ACCOUNT_SETUP.md
+ * 3. Or use MongoDB Compass/Atlas UI to insert documents
+ * 
+ * Example MongoDB Document Structure:
+ * {
+ *   "username": "admin",
+ *   "email": "admin@dict.gov.ph",
+ *   "hashedPassword": "[hashed]",  // Will be hashed on save via User model
+ *   "role": "admin",
+ *   "isActive": true,
+ *   "loginAttempts": 0,
+ *   "createdAt": ISODate,
+ *   "updatedAt": ISODate
+ * }
+ * 
+ * Password Hashing:
+ * - Passwords are automatically hashed via User.js pre-save middleware
+ * - Plain text passwords can be inserted; they will be hashed on first use
+ * - Never store plain text passwords directly
  */
 
-require('dotenv').config();
-const mongoose = require('mongoose');
-const User = require('./src/models/User');
-
-const DEFAULT_ADMIN = {
-  username: 'admin',
-  email: 'admin@masid.dict.gov.ph',
-  hashedPassword: 'changeme123', // Will be hashed automatically
-  role: 'admin',
-};
-
-async function seedDatabase() {
-  try {
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI);
-
-    console.log('[Seed] Connected to MongoDB');
-
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ username: 'admin' });
-    if (!existingAdmin) {
-      const admin = new User(DEFAULT_ADMIN);
-      await admin.save();
-      console.log('[Seed] ✓ Created default admin user');
-      console.log(`    Username: ${DEFAULT_ADMIN.username}`);
-      console.log(`    Email: ${DEFAULT_ADMIN.email}`);
-      console.log(`    Password: ${DEFAULT_ADMIN.hashedPassword}`);
-      console.log(`    ⚠️  CHANGE THIS PASSWORD IMMEDIATELY IN PRODUCTION!`);
-    } else {
-      console.log('[Seed] Admin user already exists, skipping');
-    }
-
-    console.log('\n[Seed] ✓ Database seeding completed!');
-    console.log('[Seed] Ready to scan actual government websites');
-    console.log('[Seed] Start the server: npm start');
-
-    process.exit(0);
-  } catch (error) {
-    console.error('[Seed] Error:', error.message);
-    console.error('[Seed] Stack:', error.stack);
-    process.exit(1);
-  }
-}
-
-// Run seeding
-seedDatabase();
+console.log('ℹ️  Pre-made accounts are managed manually via MongoDB.');
+console.log('📖 See MANUAL_ACCOUNT_SETUP.md for insertion instructions.');
+console.log('📖 See PRE_MADE_ACCOUNTS.md for account list and credentials.');
