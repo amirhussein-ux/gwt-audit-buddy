@@ -248,6 +248,8 @@ export default function Dashboard() {
             console.log('[Dashboard] Audit complete! Data is ready.');
           } else if (auditStatus === 'failed') {
             throw new Error(auditData.audit?.error || 'Audit failed on server');
+          } else if (auditStatus === 'cancelled') {
+            throw new Error('Audit was cancelled');
           } else {
             // Still in progress - update progress display based on elapsed time
             const progressPercent = Math.min((elapsedTime / 60000) * 100, 95); // Max 95% while in progress
@@ -385,6 +387,41 @@ export default function Dashboard() {
     setShowCompletionModal(false);
   };
 
+  const handleCancelAudit = async () => {
+    if (!activeAuditId || !token) return;
+
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      const response = await fetch(`${API_BASE}/audit/${activeAuditId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to cancel audit');
+      }
+
+      console.log('[Dashboard] Audit cancelled successfully');
+      setIsRunning(false);
+      setActiveAuditId(null);
+      setAuditError(null);
+      
+      // Clear from localStorage
+      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+
+      // Reset steps
+      setSteps(AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' })));
+    } catch (error) {
+      console.error('[Dashboard] Error cancelling audit:', error);
+      setAuditError(error instanceof Error ? error.message : 'Failed to cancel audit');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Audit Completion Modal */}
@@ -478,9 +515,18 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-4">
                 <AuditProgress steps={steps} isVisible={isRunning} />
-                <p className="text-sm text-slate-600 text-center">
-                  Audit in progress... You will receive a notification when complete.
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-600">
+                    Audit in progress... You will receive a notification when complete.
+                  </p>
+                  <Button 
+                    onClick={handleCancelAudit}
+                    variant="destructive"
+                    className="whitespace-nowrap"
+                  >
+                    Cancel Audit
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

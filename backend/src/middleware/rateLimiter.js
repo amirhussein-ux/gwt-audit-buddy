@@ -152,6 +152,11 @@ const auditLimiter = rateLimit({
     return req.user?._id?.toString() || req.ip;
   },
   skip: (req) => {
+    // Skip if rate limiting disabled (development)
+    if (process.env.RATE_LIMIT_DISABLED === 'true') {
+      console.log('[RateLimit] Audit rate limiting disabled (dev mode)');
+      return true;
+    }
     // Only rate limit if user is not admin (admins can run full audits)
     return req.user?.role === 'admin';
   },

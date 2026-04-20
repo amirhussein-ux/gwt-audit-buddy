@@ -493,28 +493,29 @@ router.post('/reset-password', async (req, res) => {
 /**
  * GET /auth/verify
  * Check if session token is valid
+ * Returns 200 with valid=true/false (never 401)
  */
 router.get('/verify', (req, res) => {
   try {
     const token = extractTokenFromHeader(req);
 
     if (!token) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      return res.status(200).json({
         valid: false,
-        error: ERROR_MESSAGES.NO_TOKEN_PROVIDED,
+        error: 'No token provided',
       });
     }
 
     const { valid, session, reason } = sessionManager.validateSession(token);
 
     if (!valid) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      return res.status(200).json({
         valid: false,
         error: reason,
       });
     }
 
-    return res.status(HTTP_STATUS.OK).json({
+    return res.status(200).json({
       valid: true,
       user: {
         username: session.username,

@@ -159,7 +159,7 @@ const extractToken = (req) => {
  */
 const attachUserToRequest = (req, session) => {
   req.user = {
-    id: session.userId,
+    _id: session.userId,
     username: session.username,
     role: session.role,
   };

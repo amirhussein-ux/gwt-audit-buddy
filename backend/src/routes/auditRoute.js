@@ -45,7 +45,9 @@ const canAccessAudit = (user, audit) => {
   // Admins can access all audits
   if (user.role === 'admin') return true;
   // Owner can access their own audits
-  if (audit.auditedBy && audit.auditedBy.toString() === user._id.toString()) return true;
+  // When using .lean(), auditedBy is a plain object with _id property
+  const auditedById = audit.auditedBy?._id || audit.auditedBy;
+  if (auditedById && auditedById.toString() === user._id.toString()) return true;
   return false;
 };
 
@@ -440,7 +442,7 @@ router.get('/:id', authenticate, auditLimiter, async (req, res) => {
 
     const auditLog = await AuditLog.findById(id)
       .populate('agency', 'name acronym domainUrl region')
-      .populate('auditedBy', 'email username role')
+      .populate('auditedBy', '_id email username role')
       .lean();
 
     if (!auditLog) {
@@ -494,7 +496,9 @@ router.get('/:id', authenticate, auditLimiter, async (req, res) => {
 router.get('/:id/download/excel', authenticate, downloadLimiter, async (req, res) => {
   try {
     const { id } = req.params;
-    const auditLog = await AuditLog.findById(id).lean();
+    const auditLog = await AuditLog.findById(id)
+      .populate('auditedBy', '_id email username role')
+      .lean();
 
     if (!auditLog) {
       return res.status(404).json({ error: AUDIT_ERRORS.AUDIT_NOT_FOUND });
@@ -536,7 +540,9 @@ router.get('/:id/download/excel', authenticate, downloadLimiter, async (req, res
 router.get('/:id/download/pdf', authenticate, downloadLimiter, async (req, res) => {
   try {
     const { id } = req.params;
-    const auditLog = await AuditLog.findById(id).lean();
+    const auditLog = await AuditLog.findById(id)
+      .populate('auditedBy', '_id email username role')
+      .lean();
 
     if (!auditLog) {
       return res.status(404).json({ error: AUDIT_ERRORS.AUDIT_NOT_FOUND });
@@ -566,6 +572,68 @@ router.get('/:id/download/pdf', authenticate, downloadLimiter, async (req, res) 
   } catch (error) {
     console.error('[Audit Download PDF] Error:', error.message);
     return res.status(500).json({ error: AUDIT_ERRORS.FAILED_GENERATE_PDF });
+  }
+});
+
+/**
+ * POST /audit/:id/cancel
+ * Cancel a running audit
+ * Only audit creator or admin can cancel
+ */
+router.post('/:id/cancel', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const auditLog = await AuditLog.findById(id)
+      .populate('auditedBy', '_id email username role')
+      .lean();
+
+    if (!auditLog) {
+      return res.status(404).json({
+        error: AUDIT_ERRORS.AUDIT_NOT_FOUND,
+      });
+    }
+
+    // IDOR FIX: Only audit creator or admin can cancel
+    if (!canAccessAudit(req.user, auditLog)) {
+      return res.status(403).json({
+        error: AUDIT_ERRORS.UNAUTHORIZED_ACCESS,
+      });
+    }
+
+    // Can only cancel if audit is still in progress
+    if (auditLog.status !== 'in_progress') {
+      return res.status(400).json({
+        error: `Cannot cancel audit with status: ${auditLog.status}`,
+      });
+    }
+
+    // Mark audit as cancelled
+    const result = await AuditLog.findByIdAndUpdate(
+      id,
+      {
+        status: 'cancelled',
+        auditResults: { error: 'Audit cancelled by user' },
+      },
+      { new: true }
+    );
+
+    console.log('[Audit Cancel] Successfully cancelled audit:', {
+      auditId: id,
+      url: auditLog.auditUrl,
+      cancelledBy: req.user.email,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Audit cancelled successfully',
+      audit: result,
+    });
+  } catch (error) {
+    console.error('[Audit Cancel] Error:', error.message);
+    return res.status(500).json({
+      error: 'Failed to cancel audit',
+    });
   }
 });
 
