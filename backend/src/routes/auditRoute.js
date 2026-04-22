@@ -10,6 +10,8 @@ const { auditLimiter, downloadLimiter } = require('../middleware/rateLimiter');
 const Agency = require('../models/Agency');
 const AuditLog = require('../models/AuditLog');
 const ComplianceScore = require('../models/ComplianceScore');
+const Notification = require('../models/Notification');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -35,20 +37,27 @@ const AUDIT_ERRORS = {
 };
 
 /**
- * Check if user owns the audit or is an admin (IDOR prevention)
+ * Check if user can access audit (view/download)
+ * ALL authenticated users can access any audit
  * @param {Object} user - Authenticated user object
  * @param {Object} audit - Audit log object
  * @returns {boolean} True if user can access
  */
 const canAccessAudit = (user, audit) => {
   if (!user || !audit) return false;
-  // Admins can access all audits
-  if (user.role === 'admin') return true;
-  // Owner can access their own audits
-  // When using .lean(), auditedBy is a plain object with _id property
-  const auditedById = audit.auditedBy?._id || audit.auditedBy;
-  if (auditedById && auditedById.toString() === user._id.toString()) return true;
-  return false;
+  // ALL authenticated users can access all audits (no ownership check)
+  return true;
+};
+
+/**
+ * Check if user can archive/restore audit (admin only)
+ * @param {Object} user - Authenticated user object
+ * @returns {boolean} True if user can manage archives
+ */
+const canManageArchive = (user) => {
+  if (!user) return false;
+  // Only admins can archive/restore
+  return user.role === 'admin';
 };
 
 /**
@@ -132,20 +141,15 @@ const deriveCurrentStage = (s1, s2, s3, s4) => {
 
 /**
  * GET /audit
- * List audits: admins see all, other users see only their own audits
+ * List audits: ALL users see all audits (no filtering)
  * Query params: ?skip=0&limit=50&status=success
- * IDOR FIX: Filter list by user ownership
  * ABUSE PROTECTION: Rate limited to prevent DOS attacks and scraping
  */
 router.get('/', authenticate, auditLimiter, async (req, res) => {
   try {
     const { skip = AUDIT_CONFIG.PAGINATION_DEFAULTS.skip, limit = AUDIT_CONFIG.PAGINATION_DEFAULTS.limit, status } = req.query;
-    const query = {};
-
-    // IDOR FIX: Non-admin users only see their own audits
-    if (req.user.role !== 'admin') {
-      query.auditedBy = req.user._id;
-    }
+    // Match non-archived audits (isArchived = false or doesn't exist)
+    const query = { isArchived: { $ne: true } };
 
     if (status) {
       query.status = status;
@@ -166,7 +170,7 @@ router.get('/', authenticate, auditLimiter, async (req, res) => {
       total,
       skip: parseInt(skip),
       limit: parseInt(limit),
-      note: req.user.role === 'admin' ? 'Showing all audits (admin view)' : 'Showing your audits only',
+      note: 'Showing all available audits (excluding archived)',
     });
   } catch (error) {
     console.error('[Audit List] Error:', error.message);
@@ -267,10 +271,22 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
         if (error instanceof Error && error.stack) {
           console.error('[Background Audit] Stack trace:', error.stack);
         }
-        // Update audit log status to failed
-        AuditLog.findByIdAndUpdate(savedAuditLog._id, { status: 'failed', error: error.message }, { returnDocument: 'after' }).catch(
-          (err) => console.error('[Cleanup] Failed to update status:', err)
-        );
+        // Update audit status to failed only if user did not cancel it.
+        AuditLog.findById(savedAuditLog._id)
+          .select('status')
+          .lean()
+          .then((latestAudit) => {
+            if (!latestAudit || latestAudit.status === 'cancelled') {
+              return null;
+            }
+
+            return AuditLog.findByIdAndUpdate(
+              savedAuditLog._id,
+              { status: 'failed', error: error.message },
+              { returnDocument: 'after' }
+            );
+          })
+          .catch((err) => console.error('[Cleanup] Failed to update status:', err));
       });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -365,6 +381,13 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
   console.log('[Background] Starting audit for', { auditLogId, url });
 
   try {
+    // If the audit was cancelled before heavy work starts, stop immediately.
+    const initialAuditLog = await AuditLog.findById(auditLogId).select('status').lean();
+    if (!initialAuditLog || initialAuditLog.status === 'cancelled') {
+      console.log('[Background] Audit already cancelled before processing. Skipping.', { auditLogId });
+      return;
+    }
+
     const auditResults = await runAudit(url, options);
     console.log('[Background] Audit completed', {
       checksCount: auditResults.checks?.length || 0,
@@ -395,6 +418,15 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
       checksCount: updateData.auditResults?.checks?.length,
       pagesCount: updateData.crawledPages?.length,
     });
+
+    // Preserve cancelled status if user cancelled while audit engine was running.
+    const latestAuditLog = await AuditLog.findById(auditLogId).select('status').lean();
+    if (!latestAuditLog || latestAuditLog.status === 'cancelled') {
+      console.log('[Background] Audit was cancelled during processing. Preserving cancelled status.', {
+        auditLogId,
+      });
+      return;
+    }
 
     const updatedAuditLog = await AuditLog.findByIdAndUpdate(auditLogId, updateData, { returnDocument: 'after' });
 
@@ -633,6 +665,244 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     console.error('[Audit Cancel] Error:', error.message);
     return res.status(500).json({
       error: 'Failed to cancel audit',
+    });
+  }
+});
+
+/**
+ * Helper function to create notifications
+ */
+const createNotification = async (type, auditLog, triggeredBy, metadata = {}) => {
+  try {
+    const titleMap = {
+      'audit_completed': 'Audit Completed',
+      'audit_cancelled': 'Audit Cancelled',
+      'audit_failed': 'Audit Failed',
+      'audit_archived': 'Audit Archived',
+    };
+
+    const messageMap = {
+      'audit_completed': `Audit for ${auditLog.auditUrl} has completed successfully`,
+      'audit_cancelled': `Audit for ${auditLog.auditUrl} was cancelled`,
+      'audit_failed': `Audit for ${auditLog.auditUrl} failed`,
+      'audit_archived': `Audit for ${auditLog.auditUrl} has been archived`,
+    };
+
+    const notification = new Notification({
+      type,
+      auditLog: auditLog._id,
+      triggeredBy,
+      title: titleMap[type] || type,
+      message: messageMap[type] || type,
+      auditUrl: auditLog.auditUrl,
+      auditStatus: auditLog.status,
+      metadata: {
+        agency: auditLog.agency,
+        ...metadata,
+      },
+      scope: 'all_users',
+    });
+
+    await notification.save();
+    return notification;
+  } catch (error) {
+    console.error('[Notification] Error creating notification:', error.message);
+  }
+};
+
+/**
+ * GET /audit/archive
+ * List archived audits (admin only)
+ */
+router.get('/archive/list', authenticate, async (req, res) => {
+  try {
+    if (!canManageArchive(req.user)) {
+      return res.status(403).json({
+        error: 'Access denied. Only admins can view archived audits.',
+        code: 'INSUFFICIENT_ROLE',
+      });
+    }
+
+    const { skip = AUDIT_CONFIG.PAGINATION_DEFAULTS.skip, limit = AUDIT_CONFIG.PAGINATION_DEFAULTS.limit } = req.query;
+    const query = { isArchived: true };
+
+    const audits = await AuditLog.find(query)
+      .populate('agency', 'name acronym domainUrl region')
+      .populate('auditedBy', 'email username role')
+      .populate('archivedBy', 'email username')
+      .sort({ archivedAt: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .lean();
+
+    const total = await AuditLog.countDocuments(query);
+
+    return res.status(200).json({
+      audits,
+      total,
+      skip: parseInt(skip),
+      limit: parseInt(limit),
+    });
+  } catch (error) {
+    console.error('[Archive List] Error:', error.message);
+    return res.status(500).json({
+      error: 'Failed to fetch archived audits',
+    });
+  }
+});
+
+/**
+ * POST /audit/:id/archive
+ * Archive an audit (admin only)
+ */
+router.post('/:id/archive', authenticate, async (req, res) => {
+  try {
+    if (!canManageArchive(req.user)) {
+      return res.status(403).json({
+        error: 'Access denied. Only admins can archive audits.',
+        code: 'INSUFFICIENT_ROLE',
+      });
+    }
+
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        error: 'Invalid audit ID format',
+        code: 'INVALID_AUDIT_ID',
+      });
+    }
+
+    if (!req.user?._id || !mongoose.Types.ObjectId.isValid(req.user._id)) {
+      return res.status(401).json({
+        error: 'Invalid authentication session. Please sign in again.',
+        code: 'INVALID_SESSION_USER',
+      });
+    }
+
+    const archivedByUserId = new mongoose.Types.ObjectId(req.user._id);
+
+    const auditLog = await AuditLog.findById(id);
+    if (!auditLog) {
+      return res.status(404).json({
+        error: AUDIT_ERRORS.AUDIT_NOT_FOUND,
+      });
+    }
+
+    if (auditLog.isArchived) {
+      return res.status(400).json({
+        error: 'Audit is already archived',
+      });
+    }
+
+    auditLog.isArchived = true;
+    auditLog.archivedAt = new Date();
+    auditLog.archivedBy = archivedByUserId;
+    auditLog.archiveReason = reason || '';
+
+    await auditLog.save();
+
+    // Create notification
+    await createNotification('audit_archived', auditLog, archivedByUserId, {
+      archiveReason: reason,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Audit archived successfully',
+      audit: auditLog,
+    });
+  } catch (error) {
+    console.error('[Audit Archive] Error:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      auditId: req.params?.id,
+      userId: req.user?._id,
+    });
+
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        error: 'Invalid ID provided',
+        code: 'INVALID_ID',
+      });
+    }
+
+    return res.status(500).json({
+      error: 'Failed to archive audit',
+    });
+  }
+});
+
+/**
+ * POST /audit/:id/restore
+ * Restore an archived audit (admin only)
+ */
+router.post('/:id/restore', authenticate, async (req, res) => {
+  try {
+    if (!canManageArchive(req.user)) {
+      return res.status(403).json({
+        error: 'Access denied. Only admins can restore audits.',
+        code: 'INSUFFICIENT_ROLE',
+      });
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        error: 'Invalid audit ID format',
+        code: 'INVALID_AUDIT_ID',
+      });
+    }
+
+    const auditLog = await AuditLog.findById(id);
+    if (!auditLog) {
+      return res.status(404).json({
+        error: AUDIT_ERRORS.AUDIT_NOT_FOUND,
+      });
+    }
+
+    if (!auditLog.isArchived) {
+      return res.status(400).json({
+        error: 'Audit is not archived',
+      });
+    }
+
+    auditLog.isArchived = false;
+    auditLog.archivedAt = null;
+    auditLog.archivedBy = null;
+    auditLog.archiveReason = '';
+
+    await auditLog.save();
+
+    // Create notification for restore
+    await createNotification('audit_restored', auditLog, req.user._id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Audit restored successfully',
+      audit: auditLog,
+    });
+  } catch (error) {
+    console.error('[Audit Restore] Error:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      auditId: req.params?.id,
+      userId: req.user?._id,
+    });
+
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        error: 'Invalid ID provided',
+        code: 'INVALID_ID',
+      });
+    }
+
+    return res.status(500).json({
+      error: 'Failed to restore audit',
     });
   }
 });

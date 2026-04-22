@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, ArrowRight, Search, Calendar } from 'lucide-react';
+import { CheckCircle, ArrowRight, Search, Calendar, Archive } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 
 /**
  * Results page configuration
@@ -58,7 +59,8 @@ interface AuditResult {
 
 export default function ResultsPage() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const { token, user } = useAuth();
   
   // State for audit completion modal
   const [completedAuditId, setCompletedAuditId] = useState<string | null>(null);
@@ -66,6 +68,47 @@ export default function ResultsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
   const [currentPage, setCurrentPage] = useState(1);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [archiveConfirmation, setArchiveConfirmation] = useState<{ isOpen: boolean; auditId: string | null }>({
+    isOpen: false,
+    auditId: null,
+  });
+
+  const handleArchiveClick = (auditId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setArchiveConfirmation({ isOpen: true, auditId });
+  };
+
+  const handleArchiveConfirm = async () => {
+    if (!archiveConfirmation.auditId || !token) return;
+
+    setArchivingId(archiveConfirmation.auditId);
+    try {
+      const response = await fetch(`${RESULTS_CONFIG.API.BASE}/audit/${archiveConfirmation.auditId}/archive`, {
+        method: 'POST',
+        headers: {
+          [RESULTS_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
+          [RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE]: RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
+        },
+        body: JSON.stringify({ reason: 'Archived from results page' }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to archive audit');
+      }
+
+      // Refresh the audits list without a full page reload.
+      await queryClient.invalidateQueries({ queryKey: ['audits'] });
+      setArchiveConfirmation({ isOpen: false, auditId: null });
+    } catch (error) {
+      console.error('Archive error:', error);
+      alert(`Error archiving audit: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setArchiveConfirmation({ isOpen: false, auditId: null });
+    } finally {
+      setArchivingId(null);
+    }
+  };
 
   const { data: audits, isLoading, error } = useQuery({
     queryKey: ['audits'],
@@ -380,6 +423,19 @@ export default function ResultsPage() {
                     View Full Report
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Button>
+
+                  {/* Archive Button - Admin Only */}
+                  {user?.role === 'admin' && (
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      onClick={(e) => handleArchiveClick(audit._id, e)}
+                      disabled={archivingId === audit._id}
+                    >
+                      <Archive className="h-4 w-4 mr-2" />
+                      {archivingId === audit._id ? 'Archiving...' : 'Archive'}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -432,6 +488,19 @@ export default function ResultsPage() {
         </>
       )}
       </div>
+
+      {/* Archive Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={archiveConfirmation.isOpen}
+        title="Archive this audit?"
+        description="This audit will be moved to the archive. You can restore it later from the Archive page. Archived audits are hidden from the main results list."
+        confirmText="Archive"
+        cancelText="Keep it"
+        variant="warning"
+        isLoading={archivingId !== null}
+        onConfirm={handleArchiveConfirm}
+        onCancel={() => setArchiveConfirmation({ isOpen: false, auditId: null })}
+      />
     </div>
   );
 }

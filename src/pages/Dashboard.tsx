@@ -10,6 +10,7 @@ import { CriticalAlertsTable } from '@/components/dashboard/CriticalAlertsTable'
 import { AuditSummaryReport } from '@/components/AuditSummaryReport';
 import AuditInput from '@/components/AuditInput';
 import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { CheckCircle } from 'lucide-react';
 
 // Constants
@@ -67,6 +68,8 @@ export default function Dashboard() {
   const [lastAudit, setLastAudit] = useState<AuditDataForDisplay | null>(null);
   const [activeAuditId, setActiveAuditId] = useState<string | null>(null);
   const [completedAuditId, setCompletedAuditId] = useState<string | null>(null);
+  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [steps, setSteps] = useState<AuditProgressStep[]>(
     AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' }))
@@ -196,10 +199,12 @@ export default function Dashboard() {
         url: url,
       }));
 
+      // Update state so cancel button works
+      setActiveAuditId(responseData.auditLogId);
+
       // Poll for completion before redirecting
       if (responseData.auditLogId) {
         console.log('[Dashboard] Polling for audit completion:', responseData.auditLogId);
-        pollAuditCompletion(responseData.auditLogId, token);
       } else {
         throw new Error('No audit ID returned from server');
       }
@@ -249,7 +254,14 @@ export default function Dashboard() {
           } else if (auditStatus === 'failed') {
             throw new Error(auditData.audit?.error || 'Audit failed on server');
           } else if (auditStatus === 'cancelled') {
-            throw new Error('Audit was cancelled');
+            console.log('[Dashboard] Audit was cancelled. Stopping polling.');
+            // Clean up active audit state and keep the audit record as cancelled in backend.
+            localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+            localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+            setIsRunning(false);
+            setActiveAuditId(null);
+            setSteps(AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' })));
+            return;
           } else {
             // Still in progress - update progress display based on elapsed time
             const progressPercent = Math.min((elapsedTime / 60000) * 100, 95); // Max 95% while in progress
@@ -278,8 +290,11 @@ export default function Dashboard() {
         elapsedTime = Date.now() - startTime;
       } catch (pollError) {
         console.error('[Dashboard] Poll error:', pollError);
-        // If it's a server error, throw immediately
-        if (pollError instanceof Error && pollError.message.includes('failed')) {
+        // Non-network terminal errors should stop polling immediately.
+        if (
+          pollError instanceof Error &&
+          (pollError.message.includes('failed') || pollError.message.includes('cancelled'))
+        ) {
           throw pollError;
         }
         // Otherwise continue polling on network errors
@@ -338,7 +353,7 @@ export default function Dashboard() {
       };
       resumePolling();
     }
-  }, [activeAuditId, token, isRunning]);
+  }, [activeAuditId, token]);
 
   // Fetch dashboard summary stats
   useEffect(() => {
@@ -387,11 +402,32 @@ export default function Dashboard() {
     setShowCompletionModal(false);
   };
 
-  const handleCancelAudit = async () => {
-    if (!activeAuditId || !token) return;
+  const handleCancelAuditClick = () => {
+    setCancelConfirmationOpen(true);
+  };
 
+  const handleCancelAuditConfirm = async () => {
+    if (!activeAuditId) {
+      console.error('[Dashboard] Cannot cancel: No active audit ID');
+      setAuditError('No active audit to cancel');
+      setCancelConfirmationOpen(false);
+      return;
+    }
+    if (!token) {
+      console.error('[Dashboard] Cannot cancel: No authentication token');
+      setAuditError('Authentication token missing');
+      setCancelConfirmationOpen(false);
+      return;
+    }
+
+    setIsCancelling(true);
     try {
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      console.log('[Dashboard] Cancelling audit:', {
+        auditId: activeAuditId,
+        apiBase: API_BASE,
+      });
+
       const response = await fetch(`${API_BASE}/audit/${activeAuditId}/cancel`, {
         method: 'POST',
         headers: {
@@ -400,15 +436,21 @@ export default function Dashboard() {
         },
       });
 
+      console.log('[Dashboard] Cancel response status:', response.status);
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to cancel audit');
+        const errorMsg = error.error || `Server error: ${response.status}`;
+        console.error('[Dashboard] Cancel failed:', errorMsg);
+        throw new Error(errorMsg);
       }
 
-      console.log('[Dashboard] Audit cancelled successfully');
+      const result = await response.json();
+      console.log('[Dashboard] Audit cancelled successfully:', result);
       setIsRunning(false);
       setActiveAuditId(null);
       setAuditError(null);
+      setCancelConfirmationOpen(false);
       
       // Clear from localStorage
       localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
@@ -417,8 +459,12 @@ export default function Dashboard() {
       // Reset steps
       setSteps(AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' })));
     } catch (error) {
-      console.error('[Dashboard] Error cancelling audit:', error);
-      setAuditError(error instanceof Error ? error.message : 'Failed to cancel audit');
+      const errorMsg = error instanceof Error ? error.message : 'Failed to cancel audit';
+      console.error('[Dashboard] Error cancelling audit:', errorMsg);
+      setAuditError(`Cancel failed: ${errorMsg}`);
+      setCancelConfirmationOpen(false);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -520,7 +566,7 @@ export default function Dashboard() {
                     Audit in progress... You will receive a notification when complete.
                   </p>
                   <Button 
-                    onClick={handleCancelAudit}
+                    onClick={handleCancelAuditClick}
                     variant="destructive"
                     className="whitespace-nowrap"
                   >
@@ -545,6 +591,19 @@ export default function Dashboard() {
 
         {/* Agency Leaderboard (full width) */}
         <AgencyLeaderboard />
+
+        {/* Cancel Audit Confirmation Dialog */}
+        <ConfirmationDialog
+          isOpen={cancelConfirmationOpen}
+          title="Cancel this audit?"
+          description="Stopping this audit will halt the scanning process and discard the current progress. You can start a new audit anytime."
+          confirmText="Cancel Audit"
+          cancelText="Keep Running"
+          variant="danger"
+          isLoading={isCancelling}
+          onConfirm={handleCancelAuditConfirm}
+          onCancel={() => setCancelConfirmationOpen(false)}
+        />
       </div>
     </div>
   );

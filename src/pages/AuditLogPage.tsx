@@ -46,6 +46,7 @@ interface AuditLogEntry {
   auditUrl: string;
   status: string | { status: string };
   agency?: string | { name: string };
+  auditedBy?: { username: string; email: string; role: string };
   createdAt: string;
   pst?: { found: boolean };
   transparencySeal?: { found: boolean };
@@ -328,6 +329,7 @@ export default function AuditLogPage() {
                   <thead>
                     <tr className="border-b border-slate-200">
                       <th className="text-left py-3 px-4 font-semibold text-slate-900">Date</th>
+                      <th className="text-left py-3 px-4 font-semibold text-slate-900">Auditor</th>
                       <th className="text-left py-3 px-4 font-semibold text-slate-900">Agency</th>
                       <th className="text-left py-3 px-4 font-semibold text-slate-900">Status</th>
                       <th className="text-left py-3 px-4 font-semibold text-slate-900">Web URL</th>
@@ -342,6 +344,11 @@ export default function AuditLogPage() {
                         agencyName = typeof log.agency === 'object' ? (log.agency.name ?? '—') : log.agency;
                       }
                       
+                      let auditorName = '—';
+                      if (log.auditedBy) {
+                        auditorName = log.auditedBy.username || log.auditedBy.email || '—';
+                      }
+                      
                       let statusValue = 'unknown';
                       if (log.status) {
                         statusValue = typeof log.status === 'object' ? (log.status.status ?? 'unknown') : log.status;
@@ -351,6 +358,9 @@ export default function AuditLogPage() {
                         <tr key={log._id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                           <td className="py-4 px-4 text-slate-600">
                             {new Date(log.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-4 text-slate-900 font-medium text-sm">
+                            {auditorName}
                           </td>
                           <td className="py-4 px-4 text-slate-900 font-medium">
                             {agencyName}

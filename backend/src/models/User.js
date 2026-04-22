@@ -40,9 +40,9 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['admin', 'auditor', 'viewer'],
-      default: 'viewer',
-      description: 'admin: full access, auditor: can run audits, viewer: read-only',
+      enum: ['admin', 'auditor'],
+      default: 'auditor',
+      description: 'admin: full access including archive/restore, auditor: can run and view audits',
     },
     agency: {
       type: mongoose.Schema.Types.ObjectId,

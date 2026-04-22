@@ -179,6 +179,30 @@ const auditLogSchema = new mongoose.Schema(
       type: String,
       description: 'Manual notes about this audit',
     },
+
+    /**
+     * Archive status and metadata
+     */
+    isArchived: {
+      type: Boolean,
+      default: false,
+      index: true,
+      description: 'Whether this audit result has been archived',
+    },
+    archivedAt: {
+      type: Date,
+      default: null,
+      description: 'Timestamp when audit was archived',
+    },
+    archivedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      description: 'Admin who archived this audit',
+    },
+    archiveReason: {
+      type: String,
+      description: 'Optional reason for archiving',
+    },
   },
   {
     timestamps: true,
@@ -193,5 +217,7 @@ auditLogSchema.index({ 'pst.found': 1 });
 auditLogSchema.index({ 'transparencySeal.found': 1 });
 // Indexes removed for WCAG fields
 auditLogSchema.index({ createdAt: -1 });
+auditLogSchema.index({ isArchived: 1, archivedAt: -1 }); // For archive queries
+auditLogSchema.index({ auditedBy: 1, isArchived: 1 }); // For user audit queries
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

@@ -2,23 +2,39 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, FileText, Clock, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, FileText, Clock, Archive, LogOut, Menu, X } from 'lucide-react';
+import ConfirmationDialog from './ConfirmationDialog';
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuth();
   const [isOpen, setIsOpen] = useState(true);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
+  const handleLogoutClick = () => {
+    setLogoutDialogOpen(true);
+  };
+
+  const handleLogoutConfirm = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      setLogoutDialogOpen(false);
+      navigate('/login');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', id: 'dashboard' },
     { icon: FileText, label: 'Results', path: '/results', id: 'results' },
     { icon: Clock, label: 'Audit Log', path: '/audit-log', id: 'audit-log' },
+    ...(user?.role === 'admin'
+      ? [{ icon: Archive, label: 'Archive', path: '/archive', id: 'archive' }]
+      : []),
   ];
 
   const isActive = (path: string) => {
@@ -53,14 +69,16 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 h-screen w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-lg z-20 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-lg z-20 transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 flex flex-col`}
       >
         {/* Header */}
         <div className="p-6 border-b border-slate-700">
-          <h1 className="text-xl font-bold">MASID</h1>
-          <p className="text-xs text-slate-400 mt-1">Monitoring & Audit Dashboard</p>
+          <div>
+            <h1 className="text-xl font-bold">MASID</h1>
+            <p className="text-xs text-slate-400 mt-1">Monitoring & Audit Dashboard</p>
+          </div>
         </div>
 
         {/* User Info */}
@@ -94,7 +112,7 @@ export default function Sidebar() {
         <div className="p-4 border-t border-slate-700">
           <Button
             variant="ghost"
-            onClick={handleLogout}
+            onClick={handleLogoutClick}
             className="w-full justify-start text-slate-300 hover:bg-slate-700 hover:text-white"
           >
             <LogOut className="h-4 w-4 mr-2" />
@@ -103,8 +121,18 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Main Content Wrapper - Add left margin on desktop */}
-      <div className="lg:ml-64" />
+      {/* Logout Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={logoutDialogOpen}
+        title="Sign out?"
+        description="Are you sure you want to sign out? You'll need to log in again to access your audit dashboard."
+        confirmText="Sign Out"
+        cancelText="Cancel"
+        variant="warning"
+        isLoading={isLoggingOut}
+        onConfirm={handleLogoutConfirm}
+        onCancel={() => setLogoutDialogOpen(false)}
+      />
     </>
   );
 }

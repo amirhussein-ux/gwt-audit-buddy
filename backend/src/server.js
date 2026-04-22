@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const auditRoute = require('./routes/auditRoute');
 const authRoute = require('./routes/authRoute');
 const dashboardRoute = require('./routes/dashboardRoute');
+const notificationRoute = require('./routes/notificationRoute');
 const { connectDB } = require('./config/db');
 const { suspiciousRequestDetector } = require('./middleware/rateLimiter');
 
@@ -137,6 +138,7 @@ const setupRoutes = () => {
   // Protected routes (require authentication)
   app.use('/api/dashboard', dashboardRoute);
   app.use('/api/audit', auditRoute);
+  app.use('/api/notifications', notificationRoute);
 
   // Health check (can be public for monitoring)
   app.get('/health', healthCheckHandler);

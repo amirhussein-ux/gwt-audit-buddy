@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard.tsx";
 import ResultsPage from "./pages/ResultsPage.tsx";
 import AuditLogPage from "./pages/AuditLogPage.tsx";
 import AuditDetailPage from "./pages/AuditDetailPage.tsx";
+import ArchivePage from "./pages/ArchivePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -62,6 +63,16 @@ const App = () => (
                 <ProtectedRoute>
                   <MainLayout>
                     <AuditDetailPage />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/archive"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ArchivePage />
                   </MainLayout>
                 </ProtectedRoute>
               }
