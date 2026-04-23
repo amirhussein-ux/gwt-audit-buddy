@@ -19,7 +19,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['in_progress', 'success', 'partial', 'failed'],
+      enum: ['in_progress', 'success', 'partial', 'failed', 'cancelled'],
       default: 'in_progress',
     },
 

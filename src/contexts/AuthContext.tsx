@@ -45,7 +45,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Load from localStorage on init
     return typeof window !== 'undefined' ? localStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : null;
   });
-  const [isLoading, setIsLoading] = useState(false);
+  // Start as true when a token exists so ProtectedRoute waits for
+  // the initial verifySession() call before deciding to redirect.
+  const [isLoading, setIsLoading] = useState(() =>
+    typeof window !== 'undefined' ? !!localStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : false
+  );
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
@@ -61,11 +65,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token]);
 
   /**
-   * Verify current session on mount
+   * Verify current session on mount.
+   * isLoading is initialised to true when a stored token exists, so
+   * ProtectedRoute renders the spinner instead of redirecting while
+   * the verification request is in flight.
    */
   useEffect(() => {
     if (token) {
-      verifySession();
+      verifySession().finally(() => setIsLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
@@ -147,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (!response.ok) {
-        // Token invalid or expired
+        // Token invalid or expired - clear auth state
         localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
         setToken(null);
         setUser(null);
@@ -156,8 +163,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const data = await response.json();
       if (data.valid) {
+        // Verification successful - ensure user data is loaded
+        if (!user && data.user) {
+          setUser(data.user);
+        }
         return true;
       } else {
+        // Verification returned false - clear auth
         localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
         setToken(null);
         setUser(null);
@@ -165,9 +177,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('[Auth] Session verification error:', error);
+      // On network error, keep the token but return false
+      // This prevents logging out on temporary network issues
       return false;
     }
-  }, [token, API_BASE]);
+  }, [token, API_BASE, user]);
 
   const value: AuthContextType = {
     user,

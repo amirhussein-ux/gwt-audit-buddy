@@ -84,22 +84,37 @@ function validateTargetUrl(url) {
 }
 
 function parseCrawlOptions(options = {}) {
+  // Validate and bound maxPages (prevent DoS through resource exhaustion)
   const requestedMaxPages = Number(options.maxPages);
-  const boundedMaxPages   = Number.isFinite(requestedMaxPages)
+  const boundedMaxPages   = Number.isFinite(requestedMaxPages) && requestedMaxPages > 0
     ? Math.max(5, Math.min(50, requestedMaxPages))
     : 20;
 
-  debugLog('Parsed crawl options', {
+  // Validate and bound maxDepth (prevent infinite recursion)
+  const requestedMaxDepth = Number(options.maxDepth);
+  const boundedMaxDepth = Number.isFinite(requestedMaxDepth) && requestedMaxDepth >= 0
+    ? Math.max(0, Math.min(3, requestedMaxDepth))
+    : 2;
+
+  // Validate and bound concurrency (prevent thread exhaustion)
+  const requestedConcurrency = Number(options.concurrency);
+  const boundedConcurrency = Number.isFinite(requestedConcurrency) && requestedConcurrency > 0
+    ? Math.max(1, Math.min(10, requestedConcurrency))
+    : 3;
+
+  debugLog('Parsed crawl options with validation', {
     requestedMaxPages,
     boundedMaxPages,
-    maxDepth: Number(options.maxDepth) >= 0 ? Number(options.maxDepth) : 2,
-    concurrency: Number(options.concurrency) > 0 ? Number(options.concurrency) : 3,
+    requestedMaxDepth,
+    boundedMaxDepth,
+    requestedConcurrency,
+    boundedConcurrency,
   });
 
   return {
     maxPages:    boundedMaxPages,
-    maxDepth:    Number(options.maxDepth) >= 0 ? Number(options.maxDepth) : 2,
-    concurrency: Number(options.concurrency) > 0 ? Number(options.concurrency) : 3,
+    maxDepth:    boundedMaxDepth,
+    concurrency: boundedConcurrency,
   };
 }
 

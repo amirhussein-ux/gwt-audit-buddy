@@ -292,9 +292,11 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[MASID] Audit init error:', errorMessage);
     if (error instanceof AuditError) {
-      return res.status(error.statusCode).json({ error: error.message });
+      // Return generic message to client, log detailed info server-side
+      return res.status(error.statusCode).json({ error: 'Failed to start audit. Please try again.' });
     }
-    return res.status(500).json({ error: `Server error: ${errorMessage}` });
+    // Always return generic error to prevent information disclosure
+    return res.status(500).json({ error: 'An error occurred while processing your request.' });
   }
 });
 
@@ -396,8 +398,17 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
       crawlSummary: auditResults.crawlSummary,
     });
 
+    // Check for crawl failures (no checks generated or very few pages crawled)
     if (!auditResults.checks || auditResults.checks.length === 0) {
-      console.warn('[Background] WARNING: No checks generated from audit');
+      const errorMsg = 'Crawl completed but no checks were generated. This may indicate a website accessibility issue.';
+      console.warn('[Background] WARNING:', errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    if (!auditResults.crawledPages || auditResults.crawledPages.length === 0) {
+      const errorMsg = 'Crawl failed: No pages were successfully crawled from the target URL.';
+      console.warn('[Background] WARNING:', errorMsg);
+      throw new Error(errorMsg);
     }
 
     // Generate UI report
@@ -793,6 +804,14 @@ router.post('/:id/archive', authenticate, async (req, res) => {
     if (auditLog.isArchived) {
       return res.status(400).json({
         error: 'Audit is already archived',
+      });
+    }
+
+    // Prevent archiving in-progress audits
+    if (auditLog.status === 'in_progress') {
+      return res.status(400).json({
+        error: 'Cannot archive an audit that is currently in progress. Please wait for it to complete.',
+        code: 'AUDIT_IN_PROGRESS',
       });
     }
 

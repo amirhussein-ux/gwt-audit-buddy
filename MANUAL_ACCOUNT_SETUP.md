@@ -182,7 +182,7 @@ See [SECURITY_REFACTORING_COMPLETE.md](SECURITY_REFACTORING_COMPLETE.md) for sec
 {
   "username": "admin",
   "email": "admin@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "admin",
   "isActive": true,
   "loginAttempts": 0,
@@ -197,7 +197,7 @@ See [SECURITY_REFACTORING_COMPLETE.md](SECURITY_REFACTORING_COMPLETE.md) for sec
 db.users.insertOne({
   "username": "admin",
   "email": "admin@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "admin",
   "isActive": true,
   "loginAttempts": 0,
@@ -216,7 +216,7 @@ db.users.insertOne({
 {
   "username": "administrator",
   "email": "administrator@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "admin",
   "isActive": true,
   "loginAttempts": 0,
@@ -231,7 +231,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "administrator",
   "email": "administrator@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "admin",
   "isActive": true,
   "loginAttempts": 0,
@@ -250,7 +250,7 @@ db.users.insertOne({
 {
   "username": "auditor1",
   "email": "auditor1@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "auditor",
   "isActive": true,
   "loginAttempts": 0,
@@ -265,7 +265,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "auditor1",
   "email": "auditor1@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "auditor",
   "isActive": true,
   "loginAttempts": 0,
@@ -284,7 +284,7 @@ db.users.insertOne({
 {
   "username": "auditor2",
   "email": "auditor2@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "auditor",
   "isActive": true,
   "loginAttempts": 0,
@@ -299,7 +299,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "auditor2",
   "email": "auditor2@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "auditor",
   "isActive": true,
   "loginAttempts": 0,
@@ -318,7 +318,7 @@ db.users.insertOne({
 {
   "username": "compliance_officer",
   "email": "compliance.officer@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "auditor",
   "isActive": true,
   "loginAttempts": 0,
@@ -333,7 +333,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "compliance_officer",
   "email": "compliance.officer@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "auditor",
   "isActive": true,
   "loginAttempts": 0,
@@ -352,7 +352,7 @@ db.users.insertOne({
 {
   "username": "viewer1",
   "email": "viewer1@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "viewer",
   "isActive": true,
   "loginAttempts": 0,
@@ -367,7 +367,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "viewer1",
   "email": "viewer1@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "viewer",
   "isActive": true,
   "loginAttempts": 0,
@@ -386,7 +386,7 @@ db.users.insertOne({
 {
   "username": "viewer2",
   "email": "viewer2@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "viewer",
   "isActive": true,
   "loginAttempts": 0,
@@ -401,7 +401,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "viewer2",
   "email": "viewer2@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "viewer",
   "isActive": true,
   "loginAttempts": 0,
@@ -420,7 +420,7 @@ db.users.insertOne({
 {
   "username": "supervisor",
   "email": "supervisor@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "viewer",
   "isActive": true,
   "loginAttempts": 0,
@@ -435,7 +435,7 @@ db.users.insertOne({
 db.users.insertOne({
   "username": "supervisor",
   "email": "supervisor@dict.gov.ph",
-  "hashedPassword": "changeme123",
+  "hashedPassword": "[GENERATE_BCRYPT_HASH]",
   "role": "viewer",
   "isActive": true,
   "loginAttempts": 0,
@@ -450,12 +450,14 @@ db.users.insertOne({
 
 ### MongoDB Shell (Bulk Insert)
 
+⚠️ **IMPORTANT**: Replace all `[GENERATE_BCRYPT_HASH]` placeholders with actual bcrypt-hashed passwords. Do NOT use plaintext passwords in production. Use the Node.js script above to properly hash passwords before insertion.
+
 ```javascript
 db.users.insertMany([
   {
     "username": "Amir Macakiling",
     "email": "user@dict.gov.ph",
-    "hashedPassword": "Temporary123@",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "admin",
     "isActive": true,
     "loginAttempts": 0,
@@ -465,7 +467,7 @@ db.users.insertMany([
   {
     "username": "admin",
     "email": "admin@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "admin",
     "isActive": true,
     "loginAttempts": 0,
@@ -475,7 +477,7 @@ db.users.insertMany([
   {
     "username": "administrator",
     "email": "administrator@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "admin",
     "isActive": true,
     "loginAttempts": 0,
@@ -485,7 +487,7 @@ db.users.insertMany([
   {
     "username": "auditor1",
     "email": "auditor1@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "auditor",
     "isActive": true,
     "loginAttempts": 0,
@@ -495,7 +497,7 @@ db.users.insertMany([
   {
     "username": "auditor2",
     "email": "auditor2@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "auditor",
     "isActive": true,
     "loginAttempts": 0,
@@ -505,7 +507,7 @@ db.users.insertMany([
   {
     "username": "compliance_officer",
     "email": "compliance.officer@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "auditor",
     "isActive": true,
     "loginAttempts": 0,
@@ -515,7 +517,7 @@ db.users.insertMany([
   {
     "username": "viewer1",
     "email": "viewer1@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "viewer",
     "isActive": true,
     "loginAttempts": 0,
@@ -525,7 +527,7 @@ db.users.insertMany([
   {
     "username": "viewer2",
     "email": "viewer2@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "viewer",
     "isActive": true,
     "loginAttempts": 0,
@@ -535,7 +537,7 @@ db.users.insertMany([
   {
     "username": "supervisor",
     "email": "supervisor@dict.gov.ph",
-    "hashedPassword": "changeme123",
+    "hashedPassword": "[GENERATE_BCRYPT_HASH]",
     "role": "viewer",
     "isActive": true,
     "loginAttempts": 0,

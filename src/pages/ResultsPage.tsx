@@ -98,8 +98,10 @@ export default function ResultsPage() {
         throw new Error(err.error || 'Failed to archive audit');
       }
 
-      // Refresh the audits list without a full page reload.
+      // Invalidate both caches: removes the audit from ResultsPage and
+      // immediately surfaces it in ArchivePage without a manual refresh.
       await queryClient.invalidateQueries({ queryKey: ['audits'] });
+      await queryClient.invalidateQueries({ queryKey: ['archived-audits'] });
       setArchiveConfirmation({ isOpen: false, auditId: null });
     } catch (error) {
       console.error('Archive error:', error);

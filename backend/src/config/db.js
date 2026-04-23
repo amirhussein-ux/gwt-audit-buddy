@@ -6,9 +6,9 @@ const mongoose = require('mongoose');
  */
 
 // Global Mongoose Configuration
-// Set defaults to use returnDocument instead of deprecated `new` option
+// Set defaults to return updated document instead of original
 // This prevents deprecation warnings from findOneAndUpdate, findByIdAndUpdate, findOneAndReplace
-mongoose.set('returnOriginal', false);
+mongoose.set('returnDocument', 'after');
 
 // Connection pool & timeout constants
 const MONGODB_CONFIG = {

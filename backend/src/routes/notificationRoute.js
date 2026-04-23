@@ -46,12 +46,16 @@ router.get('/recent', authenticate, async (req, res) => {
 
 /**
  * GET /notifications/unread
- * Get unread notifications count
+ * Get unread notifications count for current user
  */
 router.get('/unread', authenticate, async (req, res) => {
   try {
-    const query = { scope: 'all_users', isRead: false };
-    const count = await Notification.countDocuments(query);
+    const userId = req.user._id;
+    // Count notifications where current user is NOT in the readBy array
+    const count = await Notification.countDocuments({
+      scope: 'all_users',
+      readBy: { $ne: userId }
+    });
 
     return res.status(200).json({
       unreadCount: count,
@@ -108,15 +112,16 @@ router.get('/by-type/:type', authenticate, async (req, res) => {
 
 /**
  * PUT /notifications/:id/read
- * Mark notification as read
+ * Mark notification as read for current user (per-user tracking)
  */
 router.put('/:id/read', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user._id;
 
     const notification = await Notification.findByIdAndUpdate(
       id,
-      { isRead: true },
+      { $addToSet: { readBy: userId } },  // Add user to readBy array (no duplicates)
       { new: true }
     );
 
@@ -140,13 +145,16 @@ router.put('/:id/read', authenticate, async (req, res) => {
 
 /**
  * PUT /notifications/mark-all-read
- * Mark all notifications as read
+ * Mark all notifications as read for current user only (per-user)
  */
 router.put('/mark-all-read', authenticate, async (req, res) => {
   try {
+    const userId = req.user._id;
+    
+    // Add current user to readBy array for all unread notifications (where user is not already in readBy)
     const result = await Notification.updateMany(
-      { isRead: false },
-      { isRead: true }
+      { scope: 'all_users', readBy: { $ne: userId } },
+      { $addToSet: { readBy: userId } }
     );
 
     return res.status(200).json({
@@ -163,10 +171,12 @@ router.put('/mark-all-read', authenticate, async (req, res) => {
 
 /**
  * GET /notifications/stats
- * Get notification statistics
+ * Get notification statistics for current user
  */
 router.get('/stats', authenticate, async (req, res) => {
   try {
+    const userId = req.user._id;
+    
     const stats = await Notification.aggregate([
       { $match: { scope: 'all_users' } },
       {
@@ -177,7 +187,13 @@ router.get('/stats', authenticate, async (req, res) => {
       },
     ]);
 
-    const unreadCount = await Notification.countDocuments({ isRead: false, scope: 'all_users' });
+    // Count unread for current user (not in readBy array)
+    const unreadCount = await Notification.countDocuments({
+      isRead: false,
+      scope: 'all_users',
+      readBy: { $ne: userId }
+    });
+    
     const totalCount = await Notification.countDocuments({ scope: 'all_users' });
 
     return res.status(200).json({

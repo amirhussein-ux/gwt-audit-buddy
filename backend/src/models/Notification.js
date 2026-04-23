@@ -87,14 +87,25 @@ const notificationSchema = new mongoose.Schema(
     },
 
     /**
-     * Read status for individual users
-     * Stored at notification level for broadcast notifications
+     * Read status tracking per user
+     * Array of user IDs who have read this notification
+     */
+    readBy: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: 'User',
+      default: [],
+      description: 'Array of user IDs who have read this notification (for per-user tracking)',
+    },
+
+    /**
+     * Legacy isRead field (deprecated - use readBy array instead)
+     * Kept for backward compatibility
      */
     isRead: {
       type: Boolean,
       default: false,
       index: true,
-      description: 'Whether notification has been read by any user',
+      description: 'DEPRECATED: Use readBy array instead. Whether notification has been read by any user',
     },
 
     /**
