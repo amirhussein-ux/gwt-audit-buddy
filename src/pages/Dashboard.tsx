@@ -510,7 +510,7 @@ export default function Dashboard() {
     >
       {/* Audit Completion Modal */}
       {showCompletionModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
           <Card className={cn("mx-4 w-full max-w-md border-green-200 bg-white shadow-lg", brandColors.surfaces.primaryCard)}>
             <CardHeader className="border-b border-green-200">
               <div className="flex items-center gap-2">
@@ -519,7 +519,7 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent className="py-6 space-y-4">
-              <p className="text-slate-700">
+              <p className="text-white text-slate-700">
                 Your audit has been successfully completed and the results are ready to view.
               </p>
               <div className="flex gap-3 pt-4">
@@ -563,7 +563,8 @@ export default function Dashboard() {
             >
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.30),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.24),transparent_30%)]" />
               <CardHeader className="relative space-y-3 pb-4">
-                <div className="inline-flex w-fit items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-violet-700 shadow-sm">
+                <div className="inline-flex w-fit items-center roun
+                ded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-violet-700 shadow-sm">
                   Primary action
                 </div>
                 <div className="space-y-2">
