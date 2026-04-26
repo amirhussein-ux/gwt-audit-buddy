@@ -1,37 +1,42 @@
-import { ReactNode } from 'react';
-import Sidebar from './Sidebar';
-import Header from './Header';
+import type { ReactNode } from "react";
+
+import Header from "./Header";
+import Sidebar from "./Sidebar";
+import {
+  DashboardSidebarProvider,
+  useDashboardSidebar,
+} from "@/contexts/DashboardSidebarContext";
+import { brandColors } from "@/lib/brandColors";
+import { cn } from "@/lib/utils";
 
 interface MainLayoutProps {
   children: ReactNode;
 }
 
-// Constants
-const MAIN_LAYOUT_CONFIG = {
-  CONTAINER_CLASSES: 'flex flex-col h-screen',
-  CONTENT_WRAPPER_CLASSES: 'flex flex-1 overflow-hidden pt-16',
-  CONTENT_CLASSES: 'flex-1 overflow-y-auto bg-slate-50',
-};
-
-/**
- * MainLayout Component
- * 
- * Provides the main application layout with:
- * - Fixed header with notifications
- * - Fixed sidebar for navigation
- * - Full-height responsive content area
- * - Consistent spacing and styling
- */
 export default function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className={MAIN_LAYOUT_CONFIG.CONTAINER_CLASSES}>
-      <Header />
-      <div className={MAIN_LAYOUT_CONFIG.CONTENT_WRAPPER_CLASSES}>
-        <Sidebar />
-        <div className={MAIN_LAYOUT_CONFIG.CONTENT_CLASSES}>
-          {children}
-        </div>
-      </div>
+    <DashboardSidebarProvider>
+      <MainLayoutShell>{children}</MainLayoutShell>
+    </DashboardSidebarProvider>
+  );
+}
+
+function MainLayoutShell({ children }: MainLayoutProps) {
+  const { desktopExpanded } = useDashboardSidebar();
+
+  return (
+    <div className={cn("min-h-screen text-slate-800", brandColors.appShell.background)}>
+      <Sidebar />
+      <main
+        className={cn(
+          "h-screen overflow-y-auto transition-[margin] duration-200 ease-in-out",
+          brandColors.appShell.content,
+          desktopExpanded ? "md:ml-64" : "md:ml-20"
+        )}
+      >
+        <Header />
+        <div className="min-w-0">{children}</div>
+      </main>
     </div>
   );
 }

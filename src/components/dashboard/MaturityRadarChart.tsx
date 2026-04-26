@@ -3,6 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Info, TrendingUp, TrendingDown, Minus, Globe, MonitorSmartphone, FileText, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MaturityData {
@@ -297,7 +299,7 @@ export const MaturityRadarChart = () => {
   // ── Loading state ──
   if (isLoading) {
     return (
-      <Card>
+      <Card className={brandColors.surfaces.dashboardCard}>
         <CardHeader>
           <CardTitle>Maturity Index</CardTitle>
           <CardDescription>Government website compliance overview</CardDescription>
@@ -313,7 +315,7 @@ export const MaturityRadarChart = () => {
   // ── Error state ──
   if (isError || !data) {
     return (
-      <Card>
+      <Card className={brandColors.surfaces.dashboardCard}>
         <CardHeader>
           <CardTitle>Maturity Index</CardTitle>
           <CardDescription>Government website compliance overview</CardDescription>
@@ -360,7 +362,7 @@ export const MaturityRadarChart = () => {
   const overallScore = (avgWebPresence + avgUsability + avgContentQuality) / 3;
 
   return (
-    <Card className="overflow-hidden">
+    <Card className={cn("overflow-hidden", brandColors.surfaces.dashboardCard)}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>

@@ -12,6 +12,8 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 interface ComplianceScoreData {
   data: Record<string, Array<{
@@ -212,7 +214,7 @@ export const ComplianceTrendChart = () => {
 
   if (isLoading) {
     return (
-      <Card className="col-span-2">
+      <Card className={cn("col-span-2", brandColors.surfaces.dashboardCard)}>
         <CardHeader>
           <CardTitle>Compliance Trend</CardTitle>
           <CardDescription>Analyzing compliance performance over time</CardDescription>
@@ -266,7 +268,7 @@ export const ComplianceTrendChart = () => {
   };
 
   return (
-    <Card className="col-span-2">
+    <Card className={cn("col-span-2", brandColors.surfaces.dashboardCard)}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex-1">

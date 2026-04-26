@@ -160,12 +160,17 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-      <h2 className="font-display text-xl font-bold text-card-foreground mb-4">New Audit</h2>
+    <div className="rounded-[26px] border border-white/60 bg-white/72 p-6 shadow-[0_16px_36px_rgba(148,163,184,0.10)] backdrop-blur-lg">
+      <div className="mb-4">
+        <h2 className="font-display text-xl font-bold text-slate-900">New Audit</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Start a fresh compliance scan for an official `.gov.ph` website.
+        </p>
+      </div>
 
       <div className="space-y-4" onDrop={handleUrlDrop} onDragOver={handleUrlDragOver}>
         <div className="relative">
-          <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             placeholder="https://example.gov.ph"
             value={url}
@@ -173,42 +178,45 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
               setUrl(e.target.value);
               if (urlError) setUrlError(null);
             }}
-            className="pl-10"
+            className="h-12 rounded-2xl border-white/70 bg-white/90 pl-10 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
             disabled={isAuditing}
           />
         </div>
 
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Max Pages</label>
+            <label className="text-xs font-medium text-slate-500">Max Pages</label>
             <Input
               type="number"
               min={AUDIT_INPUT_CONFIG.MAX_PAGES_MIN}
               max={AUDIT_INPUT_CONFIG.MAX_PAGES_MAX}
               value={maxPages}
               onChange={(e) => setMaxPages(Number(e.target.value) || AUDIT_INPUT_CONFIG.MAX_PAGES_MIN)}
+              className="rounded-2xl border-white/70 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
               disabled={isAuditing}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Max Depth</label>
+            <label className="text-xs font-medium text-slate-500">Max Depth</label>
             <Input
               type="number"
               min={AUDIT_INPUT_CONFIG.MAX_DEPTH_MIN}
               max={AUDIT_INPUT_CONFIG.MAX_DEPTH_MAX}
               value={maxDepth}
               onChange={(e) => setMaxDepth(Number(e.target.value) || AUDIT_INPUT_CONFIG.MAX_DEPTH_MIN)}
+              className="rounded-2xl border-white/70 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
               disabled={isAuditing}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Concurrency</label>
+            <label className="text-xs font-medium text-slate-500">Concurrency</label>
             <Input
               type="number"
               min={AUDIT_INPUT_CONFIG.CONCURRENCY_MIN}
               max={AUDIT_INPUT_CONFIG.CONCURRENCY_MAX}
               value={concurrency}
               onChange={(e) => setConcurrency(Number(e.target.value) || AUDIT_INPUT_CONFIG.CONCURRENCY_MIN)}
+              className="rounded-2xl border-white/70 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
               disabled={isAuditing}
             />
           </div>
@@ -217,7 +225,7 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
         <Button
           onClick={handleSubmit}
           disabled={!url.trim() || isAuditing || !!urlError}
-          className="w-full"
+          className="h-12 w-full rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white shadow-[0_16px_34px_rgba(129,140,248,0.26)] transition-all duration-200 ease-in-out hover:from-violet-500 hover:to-indigo-500"
           size="lg"
         >
           {isAuditing ? "Scanning..." : "Start Audit"}

@@ -1,184 +1,399 @@
-import { Shield, FileSearch, BarChart3, Zap, Globe, FileSpreadsheet } from "lucide-react";
+import { Shield, FileSearch, BarChart3, Zap, Globe, FileSpreadsheet, Search, CheckCircle2, FileCheck } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
+
 import { motion } from "framer-motion";
+
 import { Link } from "react-router-dom";
 
+import { LucideIcon } from 'lucide-react';
+
 const features = [
-  {
-    icon: Globe,
-    title: "URL Scanning",
-    description: "Paste any Philippine government website URL and get an instant GWT compliance audit.",
-  },
-  {
-    icon: FileSearch,
-    title: "File Upload",
-    description: "Drag & drop local HTML files for offline evaluation against GWT standards.",
-  },
-  {
-    icon: Shield,
-    title: "Accessibility Checks",
-    description: "Automated checks for ALT tags, font sizes, load time, descriptive URLs, and more.",
-  },
-  {
-    icon: BarChart3,
-    title: "Web Presence Scoring",
-    description: "Evaluate all 4 stages of web presence — from Emerging to Connected.",
-  },
-  {
-    icon: Zap,
-    title: "Real-Time Progress",
-    description: "Watch each audit stage complete in real-time with a live progress checklist.",
-  },
-  {
-    icon: FileSpreadsheet,
-    title: "Excel Reports",
-    description: "Auto-generate audit summary reports matching the official DICT template.",
-  },
+
+{
+
+icon: Zap,
+
+title: "Automation",
+
+description: "Accelerate inspection workflows with intelligent automation, reducing manual effort and increasing throughput.",
+
+},
+
+{
+
+icon: Globe,
+
+title: "Web Integration",
+
+description: "Seamlessly integrate with web platforms and access the dashboard from anywhere, anytime.",
+
+},
+
+{
+
+icon: BarChart3,
+
+title: "Analytics & Reports",
+
+description: "Generate comprehensive reports with data-driven insights for informed decision making.",
+
+},
+
+{
+
+icon: FileSearch,
+
+title: "Documentation",
+
+description: "Maintain centralized documentation with complete audit trails for compliance and transparency.",
+
+},
+
+{
+
+icon: Shield,
+
+title: "Standardization",
+
+description: "Ensure uniform evaluation criteria across all inspections with automated standardized checks.",
+
+},
+
+{
+
+icon: Search,
+
+title: "Monitoring",
+
+description: "Real-time monitoring and tracking of inspection processes with comprehensive visibility.",
+
+},
+
 ];
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.1, duration: 0.5, ease: "easeOut" as const },
-  }),
+const containerVariants = {
+
+hidden: {},
+
+visible: {
+
+transition: {
+
+staggerChildren: 0.12,
+
+delayChildren: 0.2,
+
+},
+
+},
+
 };
 
+const cardVariants = {
+
+hidden: {
+
+opacity: 0,
+
+y: 40,
+
+scale: 0.95,
+
+},
+
+visible: {
+
+opacity: 1,
+
+y: 0,
+
+scale: 1,
+
+transition: {
+
+duration: 0.5,
+
+ease: [0.25, 0.8, 0.25, 1], // smoother than easeOut
+
+},
+
+},
+
+};
+
+interface FeatureCardProps {
+
+icon: LucideIcon;
+
+title: string;
+
+description: string;
+
+}
+
+export function FeatureCard({ icon: Icon, title, description }: FeatureCardProps) {
+
+return (
+
+<div className="bg-[#1a0b2e] rounded-2xl p-8 border border-white/10 hover:border-purple-500/50 transition-all duration-300 group cursor-pointer">
+
+<div className="bg-gradient-to-br from-purple-600/20 to-purple-500/20 w-14 h-14 rounded-xl flex items-center justify-center mb-6 group-hover:from-purple-600/30 group-hover:to-purple-500/30 transition-all">
+
+<Icon className="w-7 h-7 text-purple-400" />
+
+</div>
+
+<h3 className="text-white text-xl mb-3">{title}</h3>
+
+<p className="text-white/50 text-sm leading-relaxed">{description}</p>
+
+</div>
+
+);
+
+}
+
 const LandingPage = () => {
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <Shield className="h-7 w-7 text-primary" />
-            <span className="font-display text-xl font-bold text-foreground">GWT Auditor</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/login">
-              <Button variant="ghost" size="sm">Log in</Button>
-            </Link>
-            <Link to="/login?signup=true">
-              <Button size="sm">Get Started</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden pt-16">
-        <div className="absolute inset-0 bg-gradient-hero" />
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }} />
-        <div className="relative container mx-auto px-4 py-24 md:py-32 lg:py-40">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7 }}
-            className="mx-auto max-w-3xl text-center"
-          >
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-4 py-1.5 text-sm text-primary-foreground">
-              <Shield className="h-4 w-4" />
-              Philippine Government Web Standards
-            </div>
-            <h1 className="font-display text-4xl font-800 leading-tight tracking-tight text-primary-foreground md:text-5xl lg:text-6xl">
-              Automated GWT
-              <span className="block mt-1">Web Auditor</span>
-            </h1>
-            <p className="mt-6 text-lg leading-relaxed text-primary-foreground/75 md:text-xl">
-              Evaluate government websites against DICT's Web Accessibility and 
-              Presence guidelines. Get instant compliance reports with actionable insights.
-            </p>
-            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <Link to="/login?signup=true">
-                <Button variant="hero" size="lg" className="text-base px-8 py-6">
-                  Start Auditing
-                </Button>
-              </Link>
-              <Link to="/login">
-                <Button variant="hero-outline" size="lg" className="text-base px-8 py-6">
-                  Sign In
-                </Button>
-              </Link>
-            </div>
-          </motion.div>
-        </div>
-        {/* Bottom wave */}
-        <div className="relative h-16 md:h-24">
-          <svg className="absolute bottom-0 w-full" viewBox="0 0 1440 60" fill="none" preserveAspectRatio="none">
-            <path d="M0 60V20C240 50 480 0 720 20C960 40 1200 10 1440 30V60H0Z" fill="hsl(var(--background))" />
-          </svg>
-        </div>
-      </section>
+return (
 
-      {/* Features */}
-      <section className="py-20 md:py-28">
-        <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="mx-auto mb-16 max-w-2xl text-center"
-          >
-            <h2 className="font-display text-3xl font-bold text-foreground md:text-4xl">
-              Comprehensive Audit Engine
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Everything you need to assess Philippine government website compliance, 
-              all in one streamlined platform.
-            </p>
-          </motion.div>
+<div className="min-h-screen bg-gradient-to-b from-[#0a0118] via-[#1a0b2e] to-[#0a0118]">
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature, i) => (
-              <motion.div
-                key={feature.title}
-                custom={i}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true }}
-                variants={fadeUp}
-                className="group rounded-xl border border-border bg-card p-6 shadow-card transition-all hover:shadow-elevated hover:-translate-y-1"
-              >
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                  <feature.icon className="h-6 w-6" />
-                </div>
-                <h3 className="font-display text-lg font-bold text-card-foreground">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+{/* Header with Glassmorphism */}
 
-      {/* CTA */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-3xl rounded-2xl bg-gradient-hero p-10 text-center md:p-16 shadow-glow">
-            <h2 className="font-display text-2xl font-bold text-primary-foreground md:text-3xl">
-              Ready to audit your website?
-            </h2>
-            <p className="mt-4 text-primary-foreground/70">
-              Create your free account and run your first GWT compliance audit in minutes.
-            </p>
-            <Link to="/login?signup=true">
-              <Button variant="hero" size="lg" className="mt-8 text-base px-8 py-6">
-                Get Started Free
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+<header className="sticky top-0 z-50 backdrop-blur-[30px] bg-[#13031F]/20 border-b border-white/10">
 
-      {/* Footer */}
-      <footer className="border-t border-border py-8">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>GWT Automated Web Auditor — Based on DICT Web Accessibility Assessment Guidelines</p>
-        </div>
-      </footer>
-    </div>
-  );
+<div className="container mx-auto px-6 py-4 flex items-center justify-between">
+
+<div className="flex items-center gap-3">
+
+<img src="/masidlogonobg.png" alt="MASID" className="w-7 h-7" />
+
+<span className="text-white text-xl tracking-wide font-bold">MASID</span>
+
+</div>
+
+<Link to="/login">
+
+<nav className="flex items-center gap-8">
+
+<button className="px-6 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 hover:shadow-[0_0_20px_rgba(168,85,247,0.5)] transition-all duration-300">
+
+Login
+
+</button>
+
+</nav>
+
+</Link>
+
+</div>
+
+<div className="h-px bg-gradient-to-r from-transparent via-[#160323] to-transparent"></div>
+
+</header>
+
+{/* Hero Section */}
+
+<section className="relative min-h-[600px] flex items-center justify-center overflow-hidden">
+
+<motion.div
+
+className="absolute inset-0 bg-cover bg-center"
+
+style={{ backgroundImage: `url(/masidherobg.jpg)` }}
+
+animate={{ scale: [1, 1.05, 1] }}
+
+transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+
+>
+
+<div className="absolute inset-0 bg-gradient-to-b from-[#110620]/60 via-[#110620]/40 to-[#110620]"></div>
+
+</motion.div>
+
+<div className="relative z-10 text-center px-6 py-20">
+
+<img
+
+src="/masidlogoOutline.png"
+
+alt="MASID"
+
+className="h-24 mx-auto mb-6 drop-shadow-[0_0_30px_rgba(168,85,247,0.5)]"
+
+/>
+
+<p className="text-xl text-white/70 mb-12 max-w-2xl mx-auto">
+
+Monitoring and Automated Standards Inspection Dashboard
+
+</p>
+
+<div className="mt-12 flex flex-col items-center gap-4 sm:flex-row justify-center">
+
+<Link to="/login?signup=true">
+
+<motion.button
+
+whileHover={{ scale: 1.05 }}
+
+whileTap={{ scale: 0.95 }}
+
+className="px-8 py-3 rounded-xl bg-white/10 backdrop-blur-md text-white font-semibold border border-white/30 hover:bg-white/20 transition-all"
+
+>
+
+Start Auditing
+
+</motion.button>
+
+</Link>
+
+</div>
+
+</div>
+
+<div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#160323] to-transparent"></div>
+
+</section>
+
+{/* Features */}
+
+<section className="py-24">
+
+<div className="max-w-7xl mx-auto px-8">
+
+{/* Title */}
+
+<div className="text-center mb-16">
+
+<h2 className="text-white text-4xl font-semibold mb-4">
+
+Explore by Features
+
+</h2>
+
+</div>
+
+{/* Cards */}
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
+
+{features.map((feature, i) => (
+
+<FeatureCard
+
+key={i}
+
+icon={feature.icon}
+
+title={feature.title}
+
+description={feature.description}
+
+/>
+
+))}
+
+</div>
+
+</div>
+
+</section>
+
+{/* CTA Section */}
+
+<section className="relative py-24 px-6 bg-gradient-to-b from-[#1a0a2e] to-[#13031F]">
+
+<div className="container mx-auto max-w-4xl text-center">
+
+<h2 className="text-white text-4xl mb-6">
+
+Start Streamlining Your Inspections Today
+
+</h2>
+
+<p className="text-xl text-white/60 mb-10">
+
+Transform your inspection workflow with intelligent automation and standardized processes.
+
+Join organizations that are already experiencing increased efficiency.
+
+</p>
+
+<Link to="/login">
+
+<motion.button
+
+whileHover={{ scale: 1.05 }}
+
+whileTap={{ scale: 0.95 }}
+
+className="px-12 py-4 rounded-xl bg-gradient-to-r from-purple-600 via-purple-500 to-purple-600 hover:shadow-[0_0_50px_rgba(168,85,247,0.6)] transition-all duration-300 text-white text-lg"
+
+>
+
+Get Started
+
+</motion.button>
+
+</Link>
+
+</div>
+
+</section>
+
+{/* Footer */}
+
+<footer className="relative bg-[#0a0314] border-t border-purple-900/30">
+
+<div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
+
+<div className="container mx-auto px-6 py-8">
+
+<div className="flex items-center justify-between">
+
+<div className="flex items-center gap-4">
+
+<div className="w-9 h-9">
+
+<img src="/pilipinsLogo.png" alt="Bagong Pilipinas"/>
+
+</div>
+
+<div className="w-7 h-7">
+
+<img src="/dictLogo.png" alt="DICT"/>
+
+</div>
+
+<div className="w-7 h-7">
+
+<img src="/nippsbLogo.png" alt="NIPPSB"/>
+
+</div>
+
+</div>
+
+<p className="text-white/50 text-sm">
+
+© 2026 DICT | NIPPSB. All rights reserved. v1.0.0
+
+</p>
+
+</div>
+
+</div>
+
+</footer>
+
+</div>
+
+);
+
 };
 
 export default LandingPage;

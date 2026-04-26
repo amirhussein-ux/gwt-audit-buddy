@@ -8,6 +8,8 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, type UserSettings } from '@/contexts/AuthContext';
 import { BellRing, Gauge, KeyRound, LayoutDashboard, Shield, SlidersHorizontal } from 'lucide-react';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 const createSettingsState = (settings?: UserSettings): UserSettings => ({
   auditDefaults: {
@@ -119,24 +121,31 @@ export default function SettingsPage() {
           { value: 'audit-log', label: 'Audit Log' },
         ];
 
+  const inputClassName =
+    'rounded-2xl border-white/70 bg-white/85 shadow-[0_10px_24px_rgba(148,163,184,0.08)]';
+  const toggleRowClassName =
+    'flex items-center justify-between rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm';
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-5">
-          <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-          <p className="text-sm text-slate-600">
+    <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
+      <section className="space-y-3">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Settings</h1>
+          <p className="max-w-2xl text-sm leading-6 text-slate-600">
             Configure how MASID behaves for your role, audit workflow, and security needs.
           </p>
         </div>
-      </header>
+      </section>
 
-      <div className="container mx-auto px-4 py-8 space-y-6">
-        <Card className="border-slate-200">
+      <section className="space-y-6">
+        <Card className={cn(brandColors.surfaces.heroCard, 'overflow-hidden')}>
           <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <Badge className="bg-slate-900 text-white hover:bg-slate-900">{user?.role}</Badge>
-                <Badge variant="outline">{settings.dashboard.landingPage} default</Badge>
+                <Badge className="rounded-full bg-slate-900 text-white hover:bg-slate-900">{user?.role}</Badge>
+                <Badge variant="outline" className="rounded-full border-white/70 bg-white/70">
+                  {settings.dashboard.landingPage} default
+                </Badge>
               </div>
               <h2 className="mt-3 text-xl font-semibold text-slate-900">
                 {user?.role === 'admin' ? 'Administrative preferences' : 'Auditor preferences'}
@@ -147,14 +156,14 @@ export default function SettingsPage() {
                   : 'Tune audit execution defaults, dashboard visibility, and alert handling for your assigned work.'}
               </p>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <div className="rounded-[24px] border border-white/60 bg-[linear-gradient(135deg,rgba(224,231,255,0.78),rgba(239,246,255,0.74))] px-4 py-3 text-sm text-blue-900 shadow-[0_14px_32px_rgba(129,140,248,0.10)]">
               Preferences are saved to your account and follow you across sessions.
             </div>
           </CardContent>
         </Card>
 
         <form className="space-y-6" onSubmit={handleSettingsSubmit}>
-          <Card>
+          <Card className={brandColors.surfaces.dashboardCard}>
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Gauge className="h-5 w-5 text-slate-500" />
@@ -178,6 +187,7 @@ export default function SettingsPage() {
                       auditDefaults: { ...current.auditDefaults, maxPages: Number(event.target.value) || 1 },
                     }))
                   }
+                  className={inputClassName}
                 />
               </div>
               <div className="space-y-2">
@@ -193,6 +203,7 @@ export default function SettingsPage() {
                       auditDefaults: { ...current.auditDefaults, maxDepth: Number(event.target.value) || 0 },
                     }))
                   }
+                  className={inputClassName}
                 />
               </div>
               <div className="space-y-2">
@@ -208,12 +219,13 @@ export default function SettingsPage() {
                       auditDefaults: { ...current.auditDefaults, concurrency: Number(event.target.value) || 1 },
                     }))
                   }
+                  className={inputClassName}
                 />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className={brandColors.surfaces.dashboardCard}>
             <CardHeader>
               <div className="flex items-center gap-2">
                 <BellRing className="h-5 w-5 text-slate-500" />
@@ -266,7 +278,7 @@ export default function SettingsPage() {
                     })),
                 },
               ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+                <div key={item.label} className={toggleRowClassName}>
                   <div className="pr-6">
                     <p className="text-sm font-medium text-slate-900">{item.label}</p>
                     <p className="text-xs text-slate-500">{item.description}</p>
@@ -277,7 +289,7 @@ export default function SettingsPage() {
 
               {user?.role === 'admin' && (
                 <>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+                  <div className={toggleRowClassName}>
                     <div className="pr-6">
                       <p className="text-sm font-medium text-slate-900">Archive and restore events</p>
                       <p className="text-xs text-slate-500">
@@ -294,7 +306,7 @@ export default function SettingsPage() {
                       }
                     />
                   </div>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+                  <div className={toggleRowClassName}>
                     <div className="pr-6">
                       <p className="text-sm font-medium text-slate-900">Compliance digest flag</p>
                       <p className="text-xs text-slate-500">
@@ -316,7 +328,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className={brandColors.surfaces.dashboardCard}>
             <CardHeader>
               <div className="flex items-center gap-2">
                 <LayoutDashboard className="h-5 w-5 text-slate-500" />
@@ -338,7 +350,7 @@ export default function SettingsPage() {
                     }))
                   }
                 >
-                  <SelectTrigger className="max-w-sm">
+                  <SelectTrigger className="max-w-sm rounded-2xl border-white/70 bg-white/85 shadow-[0_10px_24px_rgba(148,163,184,0.08)]">
                     <SelectValue placeholder="Choose a default page" />
                   </SelectTrigger>
                   <SelectContent>
@@ -383,7 +395,7 @@ export default function SettingsPage() {
                     })),
                 },
               ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+                <div key={item.label} className={toggleRowClassName}>
                   <div className="pr-6">
                     <p className="text-sm font-medium text-slate-900">{item.label}</p>
                     <p className="text-xs text-slate-500">{item.description}</p>
@@ -395,13 +407,17 @@ export default function SettingsPage() {
           </Card>
 
           <div className="flex justify-end">
-            <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSavingSettings}>
+            <Button
+              type="submit"
+              className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
+              disabled={isSavingSettings}
+            >
               {isSavingSettings ? 'Saving...' : 'Save Settings'}
             </Button>
           </div>
         </form>
 
-        <Card>
+        <Card className={brandColors.surfaces.dashboardCard}>
           <CardHeader>
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-slate-500" />
@@ -421,6 +437,7 @@ export default function SettingsPage() {
                   onChange={(event) =>
                     setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))
                   }
+                  className={inputClassName}
                 />
               </div>
               <div className="space-y-2">
@@ -431,6 +448,7 @@ export default function SettingsPage() {
                   onChange={(event) =>
                     setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))
                   }
+                  className={inputClassName}
                 />
               </div>
               <div className="space-y-2">
@@ -441,17 +459,23 @@ export default function SettingsPage() {
                   onChange={(event) =>
                     setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))
                   }
+                  className={inputClassName}
                 />
               </div>
 
-              <div className="md:col-span-3 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="md:col-span-3 flex items-center justify-between rounded-2xl border border-white/60 bg-white/70 px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-3">
                   <KeyRound className="h-5 w-5 text-slate-500" />
                   <p className="text-sm text-slate-700">
                     Use a strong password with at least 8 characters before sharing system access internally.
                   </p>
                 </div>
-                <Button type="submit" variant="outline" disabled={isSavingPassword}>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={isSavingPassword}
+                  className="rounded-2xl border-white/70 bg-white/80 hover:bg-white"
+                >
                   {isSavingPassword ? 'Updating...' : 'Change Password'}
                 </Button>
               </div>
@@ -459,7 +483,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={brandColors.surfaces.dashboardCard}>
           <CardHeader>
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-5 w-5 text-slate-500" />
@@ -475,7 +499,7 @@ export default function SettingsPage() {
               : 'Auditor settings emphasize efficient audit execution, focused notification flow, and a cleaner dashboard for day-to-day assessment work.'}
           </CardContent>
         </Card>
-      </div>
+      </section>
     </div>
   );
 }

@@ -160,7 +160,7 @@ const NotificationCenter = () => {
       {/* Bell Icon Button */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="relative p-2.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200 transform hover:scale-110"
+        className="relative rounded-2xl border border-white/60 bg-white/70 p-2.5 text-slate-500 shadow-[0_10px_24px_rgba(148,163,184,0.08)] transition-all duration-200 hover:scale-[1.01] hover:bg-white hover:text-slate-700"
         title="Notifications"
       >
         <Bell className="h-5 w-5" />
@@ -183,10 +183,10 @@ const NotificationCenter = () => {
             onClick={() => setShowDropdown(false)}
           />
           
-          <Card className="fixed top-24 right-6 w-96 z-50 shadow-2xl border border-slate-200 rounded-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="p-0 bg-white">
+          <Card className="fixed right-6 top-24 z-50 w-96 overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_24px_70px_rgba(148,163,184,0.18)] backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="bg-transparent p-0">
               {/* Header */}
-              <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100">
+              <div className="flex items-center justify-between border-b border-slate-200/70 bg-[linear-gradient(135deg,rgba(245,243,255,0.86),rgba(239,246,255,0.72))] p-5">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-blue-100 rounded-lg">
                     <Bell className="h-4 w-4 text-blue-600" />

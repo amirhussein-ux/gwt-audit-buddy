@@ -15,6 +15,8 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 interface LeaderboardEntry {
   rank: number;
@@ -341,7 +343,7 @@ export const AgencyLeaderboard = () => {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className={brandColors.surfaces.dashboardCard}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-yellow-500" />
@@ -388,7 +390,7 @@ export const AgencyLeaderboard = () => {
   };
 
   return (
-    <Card>
+    <Card className={brandColors.surfaces.dashboardCard}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex-1">

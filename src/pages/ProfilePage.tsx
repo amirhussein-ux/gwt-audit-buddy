@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Building2, IdCard, Mail, Phone, ShieldCheck, UserCircle2 } from 'lucide-react';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 type ProfileFormState = {
   username: string;
@@ -61,24 +63,26 @@ export default function ProfilePage() {
   };
 
   const agency = user?.agency && typeof user.agency === 'object' ? user.agency : null;
+  const inputClassName =
+    'rounded-2xl border-white/70 bg-white/85 shadow-[0_10px_24px_rgba(148,163,184,0.08)]';
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-5">
-          <h1 className="text-2xl font-bold text-slate-900">Profile</h1>
-          <p className="text-sm text-slate-600">
+    <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
+      <section className="space-y-3">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Profile</h1>
+          <p className="max-w-2xl text-sm leading-6 text-slate-600">
             Maintain the official identity details attached to your MASID account.
           </p>
         </div>
-      </header>
+      </section>
 
-      <div className="container mx-auto px-4 py-8 space-y-6">
-        <Card className="border-slate-200">
+      <section className="space-y-6">
+        <Card className={cn(brandColors.surfaces.heroCard, 'overflow-hidden')}>
           <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.3fr_0.7fr]">
             <div className="space-y-4">
               <div className="flex items-start gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 to-sky-50 text-violet-700 shadow-[0_12px_28px_rgba(129,140,248,0.12)]">
                   <UserCircle2 className="h-8 w-8" />
                 </div>
                 <div>
@@ -87,8 +91,8 @@ export default function ProfilePage() {
                   </h2>
                   <p className="text-sm text-slate-600">{user?.positionTitle || 'Government system user'}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge className="bg-slate-900 text-white hover:bg-slate-900">{user?.role}</Badge>
-                    <Badge variant="outline" className="border-green-300 text-green-700">
+                    <Badge className="rounded-full bg-slate-900 text-white hover:bg-slate-900">{user?.role}</Badge>
+                    <Badge variant="outline" className="rounded-full border-green-300 bg-white/70 text-green-700">
                       <ShieldCheck className="mr-1 h-3.5 w-3.5" />
                       {user?.isEmailVerified ? 'Verified account' : 'Verification pending'}
                     </Badge>
@@ -97,14 +101,14 @@ export default function ProfilePage() {
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                     <Mail className="h-4 w-4 text-slate-500" />
                     Official email
                   </div>
                   <p className="text-sm text-slate-900">{user?.email}</p>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                     <Building2 className="h-4 w-4 text-slate-500" />
                     Assigned agency
@@ -115,7 +119,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
+            <div className="rounded-[26px] border border-white/60 bg-[linear-gradient(135deg,rgba(224,231,255,0.76),rgba(239,246,255,0.74))] p-5 shadow-[0_16px_32px_rgba(129,140,248,0.10)]">
               <h3 className="text-sm font-semibold text-blue-950">
                 {user?.role === 'admin' ? 'Administrator scope' : 'Auditor scope'}
               </h3>
@@ -128,7 +132,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={brandColors.surfaces.dashboardCard}>
           <CardHeader>
             <CardTitle>Account Details</CardTitle>
             <CardDescription>
@@ -144,6 +148,7 @@ export default function ProfilePage() {
                     value={form.username}
                     onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
                     placeholder="agency.auditor"
+                    className={inputClassName}
                   />
                 </div>
                 <div className="space-y-2">
@@ -152,6 +157,7 @@ export default function ProfilePage() {
                     value={form.fullName}
                     onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
                     placeholder="Juan Dela Cruz"
+                    className={inputClassName}
                   />
                 </div>
                 <div className="space-y-2">
@@ -160,6 +166,7 @@ export default function ProfilePage() {
                     value={form.positionTitle}
                     onChange={(event) => setForm((current) => ({ ...current, positionTitle: event.target.value }))}
                     placeholder="Information Systems Analyst III"
+                    className={inputClassName}
                   />
                 </div>
                 <div className="space-y-2">
@@ -168,6 +175,7 @@ export default function ProfilePage() {
                     value={form.officePhone}
                     onChange={(event) => setForm((current) => ({ ...current, officePhone: event.target.value }))}
                     placeholder="(02) 8123 4567"
+                    className={inputClassName}
                   />
                 </div>
                 <div className="space-y-2">
@@ -176,15 +184,16 @@ export default function ProfilePage() {
                     value={form.mobileNumber}
                     onChange={(event) => setForm((current) => ({ ...current, mobileNumber: event.target.value }))}
                     placeholder="+63 917 123 4567"
+                    className={inputClassName}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Email Address</label>
-                  <Input value={user?.email || ''} disabled />
+                  <Input value={user?.email || ''} disabled className={inputClassName} />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-center justify-between rounded-2xl border border-white/60 bg-white/70 px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-3">
                   <IdCard className="h-5 w-5 text-slate-500" />
                   <div>
@@ -201,7 +210,11 @@ export default function ProfilePage() {
               </div>
 
               <div className="flex justify-end">
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSaving}>
+                <Button
+                  type="submit"
+                  className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
+                  disabled={isSaving}
+                >
                   {isSaving ? 'Saving...' : 'Save Profile'}
                 </Button>
               </div>
@@ -209,7 +222,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={brandColors.surfaces.dashboardCard}>
           <CardHeader>
             <CardTitle>Contact Use in Audit Trails</CardTitle>
             <CardDescription>
@@ -217,21 +230,21 @@ export default function ProfilePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 p-4">
+            <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Phone className="h-4 w-4 text-slate-500" />
                 Office contact
               </div>
               <p className="text-sm text-slate-900">{user?.officePhone || 'Not provided'}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 p-4">
+            <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Phone className="h-4 w-4 text-slate-500" />
                 Mobile contact
               </div>
               <p className="text-sm text-slate-900">{user?.mobileNumber || 'Not provided'}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 p-4">
+            <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Building2 className="h-4 w-4 text-slate-500" />
                 Role context
@@ -242,7 +255,7 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </section>
     </div>
   );
 }

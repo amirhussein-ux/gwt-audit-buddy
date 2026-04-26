@@ -3,6 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, AlertCircle } from 'lucide-react';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 interface CriticalAlert {
   _id: string;
@@ -108,7 +110,7 @@ export const CriticalAlertsTable = () => {
 
   if (isLoading) {
     return (
-      <Card className={ALERTS_CONFIG.CARD_CLASS}>
+      <Card className={cn(ALERTS_CONFIG.CARD_CLASS, brandColors.surfaces.dashboardCard)}>
         <CardHeader>
           <CardTitle>Critical Alerts</CardTitle>
           <CardDescription>Agencies with missing PST, Transparency Seals, or low accessibility</CardDescription>
@@ -142,7 +144,7 @@ export const CriticalAlertsTable = () => {
   };
 
   return (
-    <Card className={ALERTS_CONFIG.CARD_CLASS}>
+    <Card className={cn(ALERTS_CONFIG.CARD_CLASS, brandColors.surfaces.dashboardCard)}>
       <CardHeader>
         <CardTitle>Critical Alerts</CardTitle>
         <CardDescription>Agencies requiring immediate attention ({data?.total || 0} total)</CardDescription>

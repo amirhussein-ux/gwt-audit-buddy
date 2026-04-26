@@ -75,7 +75,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   verifySession: () => Promise<boolean>;
   refreshUser: () => Promise<User | null>;
@@ -179,6 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN, data.token);
         setToken(data.token);
         setUser(data.user);
+        return data.user as User;
       } catch (error) {
         console.error('[Auth] Login error:', error);
         throw error;

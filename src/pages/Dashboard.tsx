@@ -7,11 +7,12 @@ import { MaturityRadarChart } from '@/components/dashboard/MaturityRadarChart';
 import { ComplianceTrendChart } from '@/components/dashboard/ComplianceTrendChart';
 import { AgencyLeaderboard } from '@/components/dashboard/AgencyLeaderboard';
 import { CriticalAlertsTable } from '@/components/dashboard/CriticalAlertsTable';
-import { AuditSummaryReport } from '@/components/AuditSummaryReport';
 import AuditInput from '@/components/AuditInput';
 import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Activity, BarChart3, FileText, ShieldCheck } from 'lucide-react';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
 // Constants
 const DASHBOARD_CONFIG = {
@@ -82,6 +83,36 @@ export default function Dashboard() {
   });
   const dashboardSettings = user?.settings?.dashboard;
   const auditDefaults = user?.settings?.auditDefaults;
+  const systemOverviewStats = [
+    {
+      label: 'Total Agencies',
+      value: dashboardStats.totalAgencies,
+      accent: 'text-blue-600',
+      background: 'bg-blue-50',
+      icon: ShieldCheck,
+    },
+    {
+      label: 'Avg Compliance',
+      value: `${dashboardStats.averageCompliance}%`,
+      accent: 'text-emerald-600',
+      background: 'bg-emerald-50',
+      icon: BarChart3,
+    },
+    {
+      label: 'Total Audits',
+      value: dashboardStats.totalAudits,
+      accent: 'text-purple-600',
+      background: 'bg-purple-50',
+      icon: FileText,
+    },
+    {
+      label: 'Critical Alerts',
+      value: dashboardStats.statusDistribution.critical,
+      accent: 'text-amber-600',
+      background: 'bg-amber-50',
+      icon: Activity,
+    },
+  ];
 
   // Check for recent audit result and active audit in progress
   useEffect(() => {
@@ -471,11 +502,16 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div
+      className={cn(
+        "min-h-full space-y-8 py-8",
+        brandColors.appShell.contentPadding,
+      )}
+    >
       {/* Audit Completion Modal */}
       {showCompletionModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <Card className="w-full max-w-md mx-4 border-green-200 bg-white shadow-lg">
+          <Card className={cn("mx-4 w-full max-w-md border-green-200 bg-white shadow-lg", brandColors.surfaces.primaryCard)}>
             <CardHeader className="border-b border-green-200">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-6 w-6 text-green-600" />
@@ -506,114 +542,160 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-slate-900">MASID Dashboard</h1>
-          <p className="text-sm text-slate-600">
-            Monitoring and Automated Standards Inspection Dashboard
+      <section className="space-y-3">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Dashboard</h1>
+          <p className="max-w-2xl text-sm leading-6 text-slate-600">
+            Start a new compliance run, monitor live progress, and review the latest operational
+            signals across MASID.
           </p>
         </div>
-      </header>
+      </section>
 
-      <div className="container mx-auto px-4 py-8 space-y-8">
-        {/* Quick Stats / System Overview */}
-        <Card>
-          <CardHeader>
-            <CardTitle>System Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-slate-600">Total Agencies</p>
-                <p className="text-2xl font-bold text-blue-600">{dashboardStats.totalAgencies}</p>
-              </div>
-              <div className="p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-slate-600">Avg Compliance</p>
-                <p className="text-2xl font-bold text-green-600">{dashboardStats.averageCompliance}%</p>
-              </div>
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <p className="text-sm text-slate-600">Total Audits</p>
-                <p className="text-2xl font-bold text-purple-600">{dashboardStats.totalAudits}</p>
-              </div>
-              <div className="p-4 bg-orange-50 rounded-lg">
-                <p className="text-sm text-slate-600">Critical Alerts</p>
-                <p className="text-2xl font-bold text-orange-600">{dashboardStats.statusDistribution.critical}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* New Audit Form (always displayed) */}
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle>Run New Audit</CardTitle>
-            <CardDescription>
-              Enter a government agency website URL to audit compliance
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {auditError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800"><strong>Error:</strong> {auditError}</p>
-              </div>
-            )}
-            {!isRunning ? (
-              <AuditInput
-                onStartAudit={handleAuditStart}
-                isAuditing={isRunning}
-                initialOptions={auditDefaults}
-              />
-            ) : (
-              <div className="space-y-4">
-                <AuditProgress steps={steps} isVisible={isRunning} />
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-slate-600">
-                    Audit in progress... You will receive a notification when complete.
-                  </p>
-                  <Button 
-                    onClick={handleCancelAuditClick}
-                    variant="destructive"
-                    className="whitespace-nowrap"
-                  >
-                    Cancel Audit
-                  </Button>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <div className="mx-auto w-full max-w-3xl xl:mx-0 xl:max-w-none">
+            <Card
+              className={cn(
+                brandColors.surfaces.heroCard,
+                "relative overflow-hidden"
+              )}
+            >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.30),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.24),transparent_30%)]" />
+              <CardHeader className="relative space-y-3 pb-4">
+                <div className="inline-flex w-fit items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-violet-700 shadow-sm">
+                  Primary action
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                <div className="space-y-2">
+                  <CardTitle className="text-2xl text-slate-900">Run New Audit</CardTitle>
+                  <CardDescription className="max-w-2xl text-sm leading-6 text-slate-600">
+                    Launch a fresh compliance assessment for a Philippine government website and
+                    keep the scan status in view as the audit progresses.
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="relative space-y-5">
+                {auditError && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-sm text-red-800">
+                      <strong>Error:</strong> {auditError}
+                    </p>
+                  </div>
+                )}
 
-        {/* Main Dashboard Grid - Compliance Trend (left 2 cols) + Maturity Index (right 1 col) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {dashboardSettings?.showTrendChart !== false && (
-            <div className="lg:col-span-2">
-              <ComplianceTrendChart />
-            </div>
-          )}
-
-          <div className={dashboardSettings?.showTrendChart === false ? 'lg:col-span-3' : ''}>
-            <MaturityRadarChart />
+                {!isRunning ? (
+                  <AuditInput
+                    onStartAudit={handleAuditStart}
+                    isAuditing={isRunning}
+                    initialOptions={auditDefaults}
+                  />
+                ) : (
+                  <div className="space-y-4 rounded-[26px] border border-white/70 bg-white/75 p-5 shadow-[0_16px_36px_rgba(148,163,184,0.10)] backdrop-blur-md">
+                    <AuditProgress steps={steps} isVisible={isRunning} />
+                    <div className="flex flex-col gap-3 border-t border-slate-200/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-slate-600">
+                        Audit in progress. You will receive a notification when the report is ready.
+                      </p>
+                      <Button
+                        onClick={handleCancelAuditClick}
+                        variant="destructive"
+                        className="whitespace-nowrap"
+                      >
+                        Cancel Audit
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        {dashboardSettings?.showAgencyLeaderboard !== false && <AgencyLeaderboard />}
+        <div className="xl:col-span-1">
+          <Card className={cn(brandColors.surfaces.dashboardCard, "bg-white/68")}>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg text-slate-900">System Overview</CardTitle>
+              <CardDescription className="text-sm text-slate-500">
+                Quick operational metrics for the current audit workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+                {systemOverviewStats.map((stat) => (
+                  <div
+                    key={stat.label}
+                    className={cn(
+                      brandColors.surfaces.statCard,
+                      "p-4",
+                      stat.background
+                    )}
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <stat.icon className={cn("h-4 w-4", stat.accent)} />
+                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                        Live
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium text-slate-500">{stat.label}</p>
+                    <p className={cn("mt-2 text-2xl font-semibold tracking-tight", stat.accent)}>
+                      {stat.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
-        {dashboardSettings?.showCriticalAlerts !== false && <CriticalAlertsTable />}
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-slate-800">Insights</h2>
+          <p className="text-sm text-slate-500">
+            Trend and maturity views stay available, but the audit workflow remains the lead action.
+          </p>
+        </div>
 
-        {/* Cancel Audit Confirmation Dialog */}
-        <ConfirmationDialog
-          isOpen={cancelConfirmationOpen}
-          title="Cancel this audit?"
-          description="Stopping this audit will halt the scanning process and discard the current progress. You can start a new audit anytime."
-          confirmText="Cancel Audit"
-          cancelText="Keep Running"
-          variant="danger"
-          isLoading={isCancelling}
-          onConfirm={handleCancelAuditConfirm}
-          onCancel={() => setCancelConfirmationOpen(false)}
-        />
-      </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {dashboardSettings?.showTrendChart !== false && (
+          <div className="lg:col-span-2">
+            <ComplianceTrendChart />
+          </div>
+        )}
+
+        <div className={dashboardSettings?.showTrendChart === false ? 'lg:col-span-3' : ''}>
+          <MaturityRadarChart />
+        </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-slate-800">Operational Detail</h2>
+          <p className="text-sm text-slate-500">
+            Supporting tables and ranked views remain accessible below the primary audit surface.
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          {dashboardSettings?.showAgencyLeaderboard !== false && <AgencyLeaderboard />}
+
+          {dashboardSettings?.showCriticalAlerts !== false && <CriticalAlertsTable />}
+        </div>
+      </section>
+
+      {/* Cancel Audit Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={cancelConfirmationOpen}
+        title="Cancel this audit?"
+        description="Stopping this audit will halt the scanning process and discard the current progress. You can start a new audit anytime."
+        confirmText="Cancel Audit"
+        cancelText="Keep Running"
+        variant="danger"
+        isLoading={isCancelling}
+        onConfirm={handleCancelAuditConfirm}
+        onCancel={() => setCancelConfirmationOpen(false)}
+      />
     </div>
   );
 }

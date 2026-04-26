@@ -1,20 +1,156 @@
-import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { LayoutDashboard, FileText, Clock, Archive, LogOut, Menu, X, UserCircle2, Settings } from 'lucide-react';
-import ConfirmationDialog from './ConfirmationDialog';
+import { useMemo, useState, type ComponentType } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Archive,
+  Clock,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  UserCircle2,
+} from "lucide-react";
+
+import ConfirmationDialog from "@/components/ConfirmationDialog";
+import NavItem from "@/components/sidebar/NavItem";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardSidebar } from "@/contexts/DashboardSidebarContext";
+import { brandColors } from "@/lib/brandColors";
+import { cn } from "@/lib/utils";
+
+interface SidebarNavSection {
+  id: string;
+  label: string;
+  items: Array<{
+    id: string;
+    label: string;
+    path: string;
+    icon: ComponentType<{ className?: string }>;
+  }>;
+}
+
+const SIDEBAR_SECTIONS: SidebarNavSection[] = [
+  {
+    id: "main",
+    label: "Main",
+    items: [
+      { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+      { id: "results", label: "Results", path: "/results", icon: FileText },
+      { id: "archive", label: "Archive", path: "/archive", icon: Archive },
+      { id: "audit-log", label: "Audit Log", path: "/audit-log", icon: Clock },
+    ],
+  },
+  {
+    id: "account",
+    label: "Account",
+    items: [
+      { id: "profile", label: "Profile", path: "/profile", icon: UserCircle2 },
+      { id: "settings", label: "Settings", path: "/settings", icon: Settings },
+    ],
+  },
+];
+
+const ADMIN_ONLY_PATHS = ["/archive"];
+
+function SidebarBody({
+  expanded,
+  onNavigate,
+  onLogout,
+}: {
+  expanded: boolean;
+  onNavigate: (path: string) => void;
+  onLogout: () => void;
+}) {
+  const location = useLocation();
+  const { user } = useAuth();
+
+  const sections = useMemo(() => {
+    if (user?.role === "admin") {
+      return SIDEBAR_SECTIONS;
+    }
+
+    // Filter out admin-only paths for non-admin users
+    return SIDEBAR_SECTIONS.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !ADMIN_ONLY_PATHS.includes(item.path)),
+    }));
+  }, [user?.role]);
+
+  const isActive = (path: string) => {
+    if (path === "/results") {
+      return location.pathname === "/results" || location.pathname.startsWith("/audit/");
+    }
+
+    return location.pathname === path;
+  };
+
+  return (
+    <div className={cn(brandColors.sidebar.panel, "flex h-full flex-col text-slate-800")}>
+      <div className="border-b border-white/40 px-4 py-5">
+        <div className={cn("flex items-center", expanded ? "gap-3" : "justify-center")}>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 via-fuchsia-50 to-sky-50 shadow-[0_12px_24px_rgba(129,140,248,0.14)]">
+            <img src="/masidlogonobg.png" alt="MASID" className="h-7 w-7 object-contain" />
+          </div>
+          <div
+            className={cn(
+              "overflow-hidden whitespace-nowrap transition-all duration-200 ease-in-out",
+              expanded ? "max-w-[160px] opacity-100" : "max-w-0 opacity-0"
+            )}
+          >
+            <p className="text-sm font-semibold text-slate-800">MASID</p>
+            <p className="text-xs text-slate-500">Audit dashboard</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-6 px-3 py-6">
+
+        {sections.map((section) => (
+          <div key={section.id} className="space-y-2">
+            <div className={cn("overflow-hidden transition-all duration-200 ease-in-out", expanded ? "max-h-8 opacity-100" : "max-h-0 opacity-0")}>
+              <p className={brandColors.sidebar.sectionLabel}>{section.label}</p>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              {section.items.map((item) => (
+                <NavItem
+                  key={item.id}
+                  icon={item.icon}
+                  label={item.label}
+                  active={isActive(item.path)}
+                  expanded={expanded}
+                  onClick={() => onNavigate(item.path)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-auto border-t border-white/40 px-3 py-4">
+        <div className="flex justify-center">
+          <NavItem
+            icon={LogOut}
+            label="Sign out"
+            expanded={expanded}
+            onClick={onLogout}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { logout, user } = useAuth();
-  const [isOpen, setIsOpen] = useState(true);
+  const { logout } = useAuth();
+  const { isMobile, mobileOpen, setMobileOpen, desktopExpanded, setDesktopExpanded } =
+    useDashboardSidebar();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogoutClick = () => {
-    setLogoutDialogOpen(true);
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    setMobileOpen(false);
   };
 
   const handleLogoutConfirm = async () => {
@@ -22,109 +158,47 @@ export default function Sidebar() {
     try {
       await logout();
       setLogoutDialogOpen(false);
-      navigate('/login');
+      setMobileOpen(false);
+      navigate("/login");
     } finally {
       setIsLoggingOut(false);
     }
   };
 
-  const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', id: 'dashboard' },
-    { icon: FileText, label: 'Results', path: '/results', id: 'results' },
-    { icon: Clock, label: 'Audit Log', path: '/audit-log', id: 'audit-log' },
-    { icon: UserCircle2, label: 'Profile', path: '/profile', id: 'profile' },
-    { icon: Settings, label: 'Settings', path: '/settings', id: 'settings' },
-    ...(user?.role === 'admin'
-      ? [{ icon: Archive, label: 'Archive', path: '/archive', id: 'archive' }]
-      : []),
-  ];
-
-  const isActive = (path: string) => {
-    if (path === '/results') {
-      // Results should be active for both /results and /audit/:id pages
-      return location.pathname === '/results' || location.pathname.startsWith('/audit/');
-    }
-    return location.pathname === path;
-  };
-
   return (
     <>
-      {/* Toggle Button for Mobile */}
-      <div className="lg:hidden fixed top-4 left-4 z-20">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsOpen(!isOpen)}
-          className="bg-slate-900 hover:bg-slate-800 text-white"
-        >
-          {isOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-        </Button>
-      </div>
-
-      {/* Backdrop for Mobile */}
-      {isOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-10"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-lg z-20 transform transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 flex flex-col`}
+        onMouseEnter={() => !isMobile && setDesktopExpanded(true)}
+        onMouseLeave={() => !isMobile && setDesktopExpanded(false)}
+        className={cn(
+          brandColors.sidebar.layout,
+          "fixed inset-y-0 left-0 top-0 z-40",
+          brandColors.sidebar.border,
+          desktopExpanded ? brandColors.sidebar.widths.expanded : brandColors.sidebar.widths.collapsed,
+          "hidden md:flex"
+        )}
       >
-        {/* Header */}
-        <div className="p-6 border-b border-slate-700">
-          <div>
-            <h1 className="text-xl font-bold">MASID</h1>
-            <p className="text-xs text-slate-400 mt-1">Monitoring & Audit Dashboard</p>
-          </div>
-        </div>
-
-        {/* User Info */}
-        <div className="p-4 border-b border-slate-700">
-          <p className="text-sm font-medium">{user?.fullName || user?.username}</p>
-          <p className="text-xs text-slate-400">{user?.positionTitle || user?.email}</p>
-          <p className="text-xs text-slate-400">{user?.role}</p>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-4 py-6 space-y-2">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                navigate(item.path);
-                setIsOpen(false); // Close sidebar on mobile after navigation
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                isActive(item.path)
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-              }`}
-            >
-              <item.icon className="h-5 w-5" />
-              <span className="text-sm font-medium">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        {/* Logout Button */}
-        <div className="p-4 border-t border-slate-700">
-          <Button
-            variant="ghost"
-            onClick={handleLogoutClick}
-            className="w-full justify-start text-slate-300 hover:bg-slate-700 hover:text-white"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
-        </div>
+        <SidebarBody
+          expanded={desktopExpanded}
+          onNavigate={handleNavigate}
+          onLogout={() => setLogoutDialogOpen(true)}
+        />
       </aside>
 
-      {/* Logout Confirmation Dialog */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent
+          side="left"
+          className="w-[88vw] border-r border-white/50 bg-white/82 p-0 text-slate-800 backdrop-blur-xl sm:max-w-xs"
+        >
+          <SheetTitle className="sr-only">MASID navigation</SheetTitle>
+          <SidebarBody
+            expanded
+            onNavigate={handleNavigate}
+            onLogout={() => setLogoutDialogOpen(true)}
+          />
+        </SheetContent>
+      </Sheet>
+
       <ConfirmationDialog
         isOpen={logoutDialogOpen}
         title="Sign out?"
