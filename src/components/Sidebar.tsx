@@ -98,7 +98,7 @@ function SidebarBody({
             )}
           >
             <p className="text-sm font-semibold text-slate-800">MASID</p>
-            <p className="text-xs text-slate-500">Audit dashboard</p>
+            <p className="text-xs text-slate-500">DICT Website Checker</p>
           </div>
         </div>
       </div>

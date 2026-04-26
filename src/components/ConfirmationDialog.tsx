@@ -73,35 +73,27 @@ export default function ConfirmationDialog({
 
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-      <AlertDialogContent className="max-w-md">
-        {/* Icon */}
-        <div className={`flex justify-center p-3 rounded-lg ${config.backgroundColor} mb-4`}>
-          <IconComponent className={`h-8 w-8 ${config.iconColor}`} />
-        </div>
-
+      <AlertDialogContent className="max-w-md border-purple-200 bg-black/80 shadow-lg text-white">
         {/* Content */}
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-lg font-semibold text-slate-900">
-            {title}
-          </AlertDialogTitle>
-          <AlertDialogDescription className="text-slate-600 mt-2">
+          <div className="flex items-center gap-2">
+            <IconComponent className={`h-5 w-5 ${config.iconColor}`} />
+            <AlertDialogTitle className="text-white font-semibold">
+              {title}
+            </AlertDialogTitle>
+          </div>
+
+          <AlertDialogDescription className="text-slate-300 mt-2">
             {description}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         {/* Footer */}
-        <AlertDialogFooter className="gap-2 pt-4">
-          <AlertDialogCancel
-            onClick={onCancel}
-            disabled={isLoading}
-            className="text-slate-700 hover:bg-slate-100"
-          >
-            {cancelText}
-          </AlertDialogCancel>
+        <AlertDialogFooter className="gap-3 pt-4">
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading}
-            className={`${config.confirmButtonClassName} text-white`}
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white"
           >
             {isLoading ? (
               <div className="flex items-center gap-2">
@@ -112,6 +104,14 @@ export default function ConfirmationDialog({
               confirmText
             )}
           </AlertDialogAction>
+
+          <AlertDialogCancel
+            onClick={onCancel}
+            disabled={isLoading}
+            className="flex-1 border border-slate-600 text-black hover:bg-slate-800 hover:text-white"
+          >
+            {cancelText}
+          </AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

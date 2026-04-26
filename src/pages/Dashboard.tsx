@@ -512,14 +512,14 @@ export default function Dashboard() {
       {showCompletionModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
           <Card className={cn("mx-4 w-full max-w-md border-green-200 bg-white shadow-lg", brandColors.surfaces.primaryCard)}>
-            <CardHeader className="border-b border-green-200">
+            <CardHeader>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-6 w-6 text-green-600" />
-                <CardTitle className="text-green-600">Audit Complete!</CardTitle>
+                <CardTitle className="text-white">Audit Complete!</CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="py-6 space-y-4">
-              <p className="text-white text-slate-700">
+            <CardContent className="space-y-4">
+              <p className="text-white text-slate-700 ">
                 Your audit has been successfully completed and the results are ready to view.
               </p>
               <div className="flex gap-3 pt-4">
@@ -532,7 +532,7 @@ export default function Dashboard() {
                 <Button
                   onClick={handleStayOnPage}
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 text-black hover:bg-slate-800 hover:text-white"
                 >
                   Stay on Page
                 </Button>
