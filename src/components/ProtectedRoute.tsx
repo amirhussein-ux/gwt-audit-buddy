@@ -16,7 +16,7 @@ const ERROR_MESSAGES = {
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'admin' | 'auditor' | 'viewer';
+  requiredRole?: 'admin' | 'auditor';
 }
 
 /**

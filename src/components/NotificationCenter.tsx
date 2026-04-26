@@ -32,7 +32,7 @@ interface Notification {
 }
 
 const NotificationCenter = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [markAllConfirmationOpen, setMarkAllConfirmationOpen] = useState(false);
@@ -59,7 +59,7 @@ const NotificationCenter = () => {
       if (!response.ok) throw new Error('Failed to fetch notifications');
       return await response.json();
     },
-    enabled: !!token,
+    enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
     refetchInterval: 10000, // Refetch every 10 seconds
     staleTime: 5000,
   });
@@ -76,7 +76,7 @@ const NotificationCenter = () => {
       if (!response.ok) throw new Error('Failed to fetch unread count');
       return await response.json();
     },
-    enabled: !!token,
+    enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
     refetchInterval: 10000,
     staleTime: 5000,
   });
@@ -150,6 +150,10 @@ const NotificationCenter = () => {
   };
 
   const recentNotifications = notificationsData?.notifications?.slice(0, 5) || [];
+
+  if (user?.settings?.notifications?.inAppEnabled === false) {
+    return null;
+  }
 
   return (
     <>

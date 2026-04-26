@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, FileText, Clock, Archive, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, FileText, Clock, Archive, LogOut, Menu, X, UserCircle2, Settings } from 'lucide-react';
 import ConfirmationDialog from './ConfirmationDialog';
 
 export default function Sidebar() {
@@ -32,6 +32,8 @@ export default function Sidebar() {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', id: 'dashboard' },
     { icon: FileText, label: 'Results', path: '/results', id: 'results' },
     { icon: Clock, label: 'Audit Log', path: '/audit-log', id: 'audit-log' },
+    { icon: UserCircle2, label: 'Profile', path: '/profile', id: 'profile' },
+    { icon: Settings, label: 'Settings', path: '/settings', id: 'settings' },
     ...(user?.role === 'admin'
       ? [{ icon: Archive, label: 'Archive', path: '/archive', id: 'archive' }]
       : []),
@@ -83,7 +85,8 @@ export default function Sidebar() {
 
         {/* User Info */}
         <div className="p-4 border-b border-slate-700">
-          <p className="text-sm font-medium">{user?.username}</p>
+          <p className="text-sm font-medium">{user?.fullName || user?.username}</p>
+          <p className="text-xs text-slate-400">{user?.positionTitle || user?.email}</p>
           <p className="text-xs text-slate-400">{user?.role}</p>
         </div>
 

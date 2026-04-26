@@ -49,6 +49,97 @@ const userSchema = new mongoose.Schema(
       ref: 'Agency',
       description: 'Associated government agency (optional)',
     },
+    fullName: {
+      type: String,
+      trim: true,
+      maxlength: [120, 'Full name must be 120 characters or fewer'],
+      description: 'Government employee full name',
+    },
+    positionTitle: {
+      type: String,
+      trim: true,
+      maxlength: [120, 'Position title must be 120 characters or fewer'],
+      description: 'Government position or office title',
+    },
+    officePhone: {
+      type: String,
+      trim: true,
+      maxlength: [40, 'Office phone must be 40 characters or fewer'],
+      description: 'Office landline or trunk line',
+    },
+    mobileNumber: {
+      type: String,
+      trim: true,
+      maxlength: [40, 'Mobile number must be 40 characters or fewer'],
+      description: 'Mobile contact number',
+    },
+    settings: {
+      auditDefaults: {
+        maxPages: {
+          type: Number,
+          default: 20,
+          min: 1,
+          max: 200,
+        },
+        maxDepth: {
+          type: Number,
+          default: 3,
+          min: 0,
+          max: 10,
+        },
+        concurrency: {
+          type: Number,
+          default: 3,
+          min: 1,
+          max: 10,
+        },
+      },
+      notifications: {
+        inAppEnabled: {
+          type: Boolean,
+          default: true,
+        },
+        emailEnabled: {
+          type: Boolean,
+          default: true,
+        },
+        auditCompleted: {
+          type: Boolean,
+          default: true,
+        },
+        auditFailed: {
+          type: Boolean,
+          default: true,
+        },
+        archiveEvents: {
+          type: Boolean,
+          default: true,
+        },
+        complianceDigest: {
+          type: Boolean,
+          default: false,
+        },
+      },
+      dashboard: {
+        landingPage: {
+          type: String,
+          enum: ['dashboard', 'results', 'audit-log', 'archive'],
+          default: 'dashboard',
+        },
+        showAgencyLeaderboard: {
+          type: Boolean,
+          default: true,
+        },
+        showTrendChart: {
+          type: Boolean,
+          default: true,
+        },
+        showCriticalAlerts: {
+          type: Boolean,
+          default: true,
+        },
+      },
+    },
     isActive: {
       type: Boolean,
       default: true,

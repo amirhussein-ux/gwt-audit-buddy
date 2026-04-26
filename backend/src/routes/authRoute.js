@@ -1,6 +1,6 @@
 const express = require('express');
 const User = require('../models/User');
-const { sessionManager } = require('../middleware/auth');
+const { authenticate, sessionManager } = require('../middleware/auth');
 const { 
   loginLimiter, 
   passwordResetLimiter,
@@ -51,6 +51,14 @@ const HTTP_STATUS = {
   INTERNAL_ERROR: 500,
 };
 
+const PROFILE_LIMITS = {
+  USERNAME_MIN_LENGTH: 3,
+  PASSWORD_MIN_LENGTH: 8,
+  MAX_PAGES: { min: 1, max: 200 },
+  MAX_DEPTH: { min: 0, max: 10 },
+  CONCURRENCY: { min: 1, max: 10 },
+};
+
 /**
  * Extract token from Authorization header ONLY (for security)
  * Do NOT extract from body or query (prevents logging/caching)
@@ -72,16 +80,31 @@ const extractTokenFromHeader = (req) => {
  * @returns {Object} Formatted user response
  */
 const buildUserResponse = (user, options = {}) => {
+  const agency = user.agency && typeof user.agency === 'object'
+    ? {
+        id: user.agency._id,
+        name: user.agency.name,
+        acronym: user.agency.acronym,
+        region: user.agency.region,
+        domainUrl: user.agency.domainUrl,
+      }
+    : user.agency;
+
   const response = {
     id: user._id,
     username: user.username,
     email: user.email,
     role: user.role,
     isEmailVerified: user.isEmailVerified,
+    fullName: user.fullName || '',
+    positionTitle: user.positionTitle || '',
+    officePhone: user.officePhone || '',
+    mobileNumber: user.mobileNumber || '',
+    settings: user.settings || {},
   };
 
   if (options.includeAgency) {
-    response.agency = user.agency;
+    response.agency = agency;
   }
 
   if (options.includeLastLogin) {
@@ -90,6 +113,65 @@ const buildUserResponse = (user, options = {}) => {
 
   return response;
 };
+
+const clampNumber = (value, min, max, fallback) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, numeric));
+};
+
+const sanitizeProfilePayload = (body = {}) => ({
+  username: typeof body.username === 'string' ? body.username.trim() : undefined,
+  fullName: typeof body.fullName === 'string' ? body.fullName.trim() : undefined,
+  positionTitle: typeof body.positionTitle === 'string' ? body.positionTitle.trim() : undefined,
+  officePhone: typeof body.officePhone === 'string' ? body.officePhone.trim() : undefined,
+  mobileNumber: typeof body.mobileNumber === 'string' ? body.mobileNumber.trim() : undefined,
+});
+
+const sanitizeSettingsPayload = (body = {}, role = 'auditor') => ({
+  auditDefaults: {
+    maxPages: clampNumber(
+      body.auditDefaults?.maxPages,
+      PROFILE_LIMITS.MAX_PAGES.min,
+      PROFILE_LIMITS.MAX_PAGES.max,
+      20
+    ),
+    maxDepth: clampNumber(
+      body.auditDefaults?.maxDepth,
+      PROFILE_LIMITS.MAX_DEPTH.min,
+      PROFILE_LIMITS.MAX_DEPTH.max,
+      3
+    ),
+    concurrency: clampNumber(
+      body.auditDefaults?.concurrency,
+      PROFILE_LIMITS.CONCURRENCY.min,
+      PROFILE_LIMITS.CONCURRENCY.max,
+      3
+    ),
+  },
+  notifications: {
+    inAppEnabled: Boolean(body.notifications?.inAppEnabled),
+    emailEnabled: Boolean(body.notifications?.emailEnabled),
+    auditCompleted: Boolean(body.notifications?.auditCompleted),
+    auditFailed: Boolean(body.notifications?.auditFailed),
+    archiveEvents: role === 'admin' ? Boolean(body.notifications?.archiveEvents) : false,
+    complianceDigest: role === 'admin' ? Boolean(body.notifications?.complianceDigest) : false,
+  },
+  dashboard: {
+    landingPage: role === 'admin'
+      ? ['dashboard', 'results', 'audit-log', 'archive'].includes(body.dashboard?.landingPage)
+        ? body.dashboard.landingPage
+        : 'dashboard'
+      : ['dashboard', 'results', 'audit-log'].includes(body.dashboard?.landingPage)
+        ? body.dashboard.landingPage
+        : 'dashboard',
+    showAgencyLeaderboard: Boolean(body.dashboard?.showAgencyLeaderboard),
+    showTrendChart: Boolean(body.dashboard?.showTrendChart),
+    showCriticalAlerts: Boolean(body.dashboard?.showCriticalAlerts),
+  },
+});
 
 /**
  * Validate login input
@@ -197,7 +279,9 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     // Find user by email
-    const user = await User.findOne({ email, isActive: true }).select('+hashedPassword');
+    const user = await User.findOne({ email, isActive: true })
+      .populate('agency', 'name acronym region domainUrl')
+      .select('+hashedPassword');
 
     if (!user) {
       return res.status(HTTP_STATUS.UNAUTHORIZED).json({
@@ -515,14 +599,30 @@ router.get('/verify', (req, res) => {
       });
     }
 
-    return res.status(200).json({
-      valid: true,
-      user: {
-        username: session.username,
-        role: session.role,
-      },
-      expiresIn: Math.ceil((session.expiresAt - Date.now()) / 1000), // seconds
-    });
+    return User.findById(session.userId)
+      .populate('agency', 'name acronym region domainUrl')
+      .then((user) => {
+        if (!user || !user.isActive) {
+          sessionManager.revokeSession(token);
+          return res.status(200).json({
+            valid: false,
+            error: ERROR_MESSAGES.USER_NOT_FOUND,
+          });
+        }
+
+        return res.status(200).json({
+          valid: true,
+          user: buildUserResponse(user, { includeAgency: true, includeLastLogin: true }),
+          expiresIn: Math.ceil((session.expiresAt - Date.now()) / 1000),
+        });
+      })
+      .catch((error) => {
+        console.error('[Auth Verify] User lookup error:', error.message);
+        return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
+          valid: false,
+          error: ERROR_MESSAGES.VERIFY_FAILED,
+        });
+      });
   } catch (error) {
     console.error('[Auth Verify] Error:', error.message);
     return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
@@ -554,7 +654,9 @@ router.get('/me', async (req, res) => {
       });
     }
 
-    const user = await User.findById(session.userId).select('-hashedPassword');
+    const user = await User.findById(session.userId)
+      .populate('agency', 'name acronym region domainUrl')
+      .select('-hashedPassword');
 
     if (!user) {
       return res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -569,6 +671,167 @@ router.get('/me', async (req, res) => {
     console.error('[Auth Me] Error:', error.message);
     return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
       error: ERROR_MESSAGES.FETCH_USER_FAILED,
+    });
+  }
+});
+
+router.get('/profile', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .populate('agency', 'name acronym region domainUrl agencyType')
+      .select('-hashedPassword');
+
+    if (!user) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        error: ERROR_MESSAGES.USER_NOT_FOUND,
+      });
+    }
+
+    return res.status(HTTP_STATUS.OK).json({
+      user: buildUserResponse(user, { includeAgency: true, includeLastLogin: true }),
+      metadata: {
+        memberSince: user.createdAt,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    console.error('[Auth Profile] Error:', error.message);
+    return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
+      error: 'Failed to fetch profile',
+    });
+  }
+});
+
+router.put('/profile', authenticate, async (req, res) => {
+  try {
+    const updates = sanitizeProfilePayload(req.body);
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        error: ERROR_MESSAGES.USER_NOT_FOUND,
+      });
+    }
+
+    if (updates.username !== undefined) {
+      if (updates.username.length < PROFILE_LIMITS.USERNAME_MIN_LENGTH) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          error: `Username must be at least ${PROFILE_LIMITS.USERNAME_MIN_LENGTH} characters`,
+        });
+      }
+
+      const duplicate = await User.findOne({
+        username: updates.username,
+        _id: { $ne: req.user._id },
+      });
+
+      if (duplicate) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          error: 'Username is already in use',
+        });
+      }
+
+      user.username = updates.username;
+    }
+
+    if (updates.fullName !== undefined) user.fullName = updates.fullName;
+    if (updates.positionTitle !== undefined) user.positionTitle = updates.positionTitle;
+    if (updates.officePhone !== undefined) user.officePhone = updates.officePhone;
+    if (updates.mobileNumber !== undefined) user.mobileNumber = updates.mobileNumber;
+
+    await user.save();
+
+    const activeSession = sessionManager.getSession(req.user.token);
+    if (activeSession) {
+      activeSession.username = user.username;
+    }
+
+    const savedUser = await User.findById(user._id)
+      .populate('agency', 'name acronym region domainUrl agencyType')
+      .select('-hashedPassword');
+
+    return res.status(HTTP_STATUS.OK).json({
+      message: 'Profile updated successfully',
+      user: buildUserResponse(savedUser, { includeAgency: true, includeLastLogin: true }),
+    });
+  } catch (error) {
+    console.error('[Auth Update Profile] Error:', error.message);
+    return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
+      error: 'Failed to update profile',
+    });
+  }
+});
+
+router.put('/settings', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        error: ERROR_MESSAGES.USER_NOT_FOUND,
+      });
+    }
+
+    user.settings = sanitizeSettingsPayload(req.body, user.role);
+    await user.save();
+
+    const savedUser = await User.findById(user._id)
+      .populate('agency', 'name acronym region domainUrl agencyType')
+      .select('-hashedPassword');
+
+    return res.status(HTTP_STATUS.OK).json({
+      message: 'Settings updated successfully',
+      user: buildUserResponse(savedUser, { includeAgency: true, includeLastLogin: true }),
+    });
+  } catch (error) {
+    console.error('[Auth Update Settings] Error:', error.message);
+    return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
+      error: 'Failed to update settings',
+    });
+  }
+});
+
+router.post('/change-password', authenticate, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: 'Current password and new password are required',
+      });
+    }
+
+    if (newPassword.length < PROFILE_LIMITS.PASSWORD_MIN_LENGTH) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: `New password must be at least ${PROFILE_LIMITS.PASSWORD_MIN_LENGTH} characters`,
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('+hashedPassword');
+
+    if (!user) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        error: ERROR_MESSAGES.USER_NOT_FOUND,
+      });
+    }
+
+    const passwordValid = await user.comparePassword(currentPassword);
+    if (!passwordValid) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        error: 'Current password is incorrect',
+      });
+    }
+
+    user.hashedPassword = newPassword;
+    await user.save();
+
+    return res.status(HTTP_STATUS.OK).json({
+      message: 'Password updated successfully',
+    });
+  } catch (error) {
+    console.error('[Auth Change Password] Error:', error.message);
+    return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
+      error: 'Failed to update password',
     });
   }
 });

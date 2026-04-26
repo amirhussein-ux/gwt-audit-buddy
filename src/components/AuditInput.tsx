@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Globe } from "lucide-react";
@@ -43,6 +43,11 @@ interface AuditInputProps {
     }
   ) => void;
   isAuditing: boolean;
+  initialOptions?: {
+    maxPages: number;
+    maxDepth: number;
+    concurrency: number;
+  };
 }
 
 /**
@@ -105,13 +110,20 @@ const clampValue = (value: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, value));
 };
 
-const AuditInput = ({ onStartAudit, isAuditing }: AuditInputProps) => {
+const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProps) => {
   const { toast } = useToast();
   const [url, setUrl] = useState("");
-  const [maxPages, setMaxPages] = useState(AUDIT_INPUT_CONFIG.MAX_PAGES_DEFAULT);
-  const [maxDepth, setMaxDepth] = useState(AUDIT_INPUT_CONFIG.MAX_DEPTH_DEFAULT);
-  const [concurrency, setConcurrency] = useState(AUDIT_INPUT_CONFIG.CONCURRENCY_DEFAULT);
+  const [maxPages, setMaxPages] = useState(initialOptions?.maxPages ?? AUDIT_INPUT_CONFIG.MAX_PAGES_DEFAULT);
+  const [maxDepth, setMaxDepth] = useState(initialOptions?.maxDepth ?? AUDIT_INPUT_CONFIG.MAX_DEPTH_DEFAULT);
+  const [concurrency, setConcurrency] = useState(initialOptions?.concurrency ?? AUDIT_INPUT_CONFIG.CONCURRENCY_DEFAULT);
   const [urlError, setUrlError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialOptions) return;
+    setMaxPages(initialOptions.maxPages);
+    setMaxDepth(initialOptions.maxDepth);
+    setConcurrency(initialOptions.concurrency);
+  }, [initialOptions]);
 
   const handleSubmit = () => {
     const validation = validateGovphUrl(url);

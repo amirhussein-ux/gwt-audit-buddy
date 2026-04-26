@@ -62,7 +62,7 @@ interface AuditDataForDisplay {
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [isRunning, setIsRunning] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [lastAudit, setLastAudit] = useState<AuditDataForDisplay | null>(null);
@@ -80,6 +80,8 @@ export default function Dashboard() {
     totalAudits: 0,
     statusDistribution: { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
   });
+  const dashboardSettings = user?.settings?.dashboard;
+  const auditDefaults = user?.settings?.auditDefaults;
 
   // Check for recent audit result and active audit in progress
   useEffect(() => {
@@ -557,7 +559,11 @@ export default function Dashboard() {
               </div>
             )}
             {!isRunning ? (
-              <AuditInput onStartAudit={handleAuditStart} isAuditing={isRunning} />
+              <AuditInput
+                onStartAudit={handleAuditStart}
+                isAuditing={isRunning}
+                initialOptions={auditDefaults}
+              />
             ) : (
               <div className="space-y-4">
                 <AuditProgress steps={steps} isVisible={isRunning} />
@@ -580,17 +586,20 @@ export default function Dashboard() {
 
         {/* Main Dashboard Grid - Compliance Trend (left 2 cols) + Maturity Index (right 1 col) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Compliance Trend (spans 2 columns on left) */}
-          <div className="lg:col-span-2">
-            <ComplianceTrendChart />
-          </div>
+          {dashboardSettings?.showTrendChart !== false && (
+            <div className="lg:col-span-2">
+              <ComplianceTrendChart />
+            </div>
+          )}
 
-          {/* Maturity Index (spans 1 column on right) */}
-          <MaturityRadarChart />
+          <div className={dashboardSettings?.showTrendChart === false ? 'lg:col-span-3' : ''}>
+            <MaturityRadarChart />
+          </div>
         </div>
 
-        {/* Agency Leaderboard (full width) */}
-        <AgencyLeaderboard />
+        {dashboardSettings?.showAgencyLeaderboard !== false && <AgencyLeaderboard />}
+
+        {dashboardSettings?.showCriticalAlerts !== false && <CriticalAlertsTable />}
 
         {/* Cancel Audit Confirmation Dialog */}
         <ConfirmationDialog

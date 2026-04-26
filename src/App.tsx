@@ -13,6 +13,8 @@ import ResultsPage from "./pages/ResultsPage.tsx";
 import AuditLogPage from "./pages/AuditLogPage.tsx";
 import AuditDetailPage from "./pages/AuditDetailPage.tsx";
 import ArchivePage from "./pages/ArchivePage.tsx";
+import ProfilePage from "./pages/ProfilePage.tsx";
+import SettingsPage from "./pages/SettingsPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -73,6 +75,26 @@ const App = () => (
                 <ProtectedRoute>
                   <MainLayout>
                     <ArchivePage />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ProfilePage />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <SettingsPage />
                   </MainLayout>
                 </ProtectedRoute>
               }

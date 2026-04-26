@@ -16,7 +16,7 @@ export default function Header() {
         {/* Center - Page Title (can be dynamic based on route) */}
         <div className="flex-1 text-center">
           <p className="text-sm font-medium text-slate-700">
-            {user && `Welcome, ${user.username}`}
+            {user && `Welcome, ${user.fullName || user.username}`}
           </p>
         </div>
 

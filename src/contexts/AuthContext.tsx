@@ -12,6 +12,11 @@ const AUTH_CONFIG = {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
     VERIFY: '/auth/verify',
+    PROFILE: '/auth/profile',
+    SETTINGS: '/auth/settings',
+    CHANGE_PASSWORD: '/auth/change-password',
+    FORGOT_PASSWORD: '/auth/forgot-password',
+    RESET_PASSWORD: '/auth/reset-password',
   },
   HEADERS: {
     CONTENT_TYPE: 'application/json',
@@ -19,12 +24,50 @@ const AUTH_CONFIG = {
   },
 };
 
+export interface AgencySummary {
+  id?: string;
+  name: string;
+  acronym?: string;
+  region?: string;
+  domainUrl?: string;
+  agencyType?: string;
+}
+
+export interface UserSettings {
+  auditDefaults: {
+    maxPages: number;
+    maxDepth: number;
+    concurrency: number;
+  };
+  notifications: {
+    inAppEnabled: boolean;
+    emailEnabled: boolean;
+    auditCompleted: boolean;
+    auditFailed: boolean;
+    archiveEvents: boolean;
+    complianceDigest: boolean;
+  };
+  dashboard: {
+    landingPage: 'dashboard' | 'results' | 'audit-log' | 'archive';
+    showAgencyLeaderboard: boolean;
+    showTrendChart: boolean;
+    showCriticalAlerts: boolean;
+  };
+}
+
 export interface User {
   id: string;
   username: string;
   email: string;
-  role: 'admin' | 'auditor' | 'viewer';
-  agency?: string;
+  role: 'admin' | 'auditor';
+  agency?: AgencySummary | string | null;
+  fullName?: string;
+  positionTitle?: string;
+  officePhone?: string;
+  mobileNumber?: string;
+  isEmailVerified?: boolean;
+  lastLogin?: string | null;
+  settings: UserSettings;
 }
 
 interface AuthContextType {
@@ -35,11 +78,20 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   verifySession: () => Promise<boolean>;
+  refreshUser: () => Promise<User | null>;
+  updateProfile: (payload: Partial<Pick<User, 'username' | 'fullName' | 'positionTitle' | 'officePhone' | 'mobileNumber'>>) => Promise<User>;
+  updateSettings: (settings: UserSettings) => Promise<User>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** Step 1: sends reset link if email exists. Always shows generic message. */
+  requestPasswordReset: (email: string) => Promise<void>;
+  /** Step 2: submits new password with the token from the reset link. */
+  resetPassword: (email: string, token: string, password: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => {
     // Load from localStorage on init
@@ -51,7 +103,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     typeof window !== 'undefined' ? !!localStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : false
   );
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+  const buildAuthHeaders = useCallback((authToken: string, includeContentType = true) => {
+    const headers: Record<string, string> = {
+      Authorization: `${AUTH_CONFIG.HEADERS.AUTHORIZATION_PREFIX} ${authToken}`,
+    };
+
+    if (includeContentType) {
+      headers['Content-Type'] = AUTH_CONFIG.HEADERS.CONTENT_TYPE;
+    }
+
+    return headers;
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (!token) return null;
+
+    const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.PROFILE}`, {
+      headers: buildAuthHeaders(token),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh user profile');
+    }
+
+    const data = await response.json();
+    setUser(data.user);
+    return data.user as User;
+  }, [API_BASE, buildAuthHeaders, token]);
 
   /**
    * Set up Authorization header on token change
@@ -147,10 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Set Authorization header for this request
       const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.VERIFY}`, {
-        headers: {
-          'Authorization': `${AUTH_CONFIG.HEADERS.AUTHORIZATION_PREFIX} ${token}`,
-          'Content-Type': AUTH_CONFIG.HEADERS.CONTENT_TYPE,
-        },
+        headers: buildAuthHeaders(token),
       });
 
       if (!response.ok) {
@@ -163,8 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const data = await response.json();
       if (data.valid) {
-        // Verification successful - ensure user data is loaded
-        if (!user && data.user) {
+        if (data.user) {
           setUser(data.user);
         }
         return true;
@@ -181,7 +255,118 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // This prevents logging out on temporary network issues
       return false;
     }
-  }, [token, API_BASE, user]);
+  }, [token, API_BASE, buildAuthHeaders]);
+
+  const updateProfile = useCallback(
+    async (payload: Partial<Pick<User, 'username' | 'fullName' | 'positionTitle' | 'officePhone' | 'mobileNumber'>>) => {
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.PROFILE}`, {
+        method: 'PUT',
+        headers: buildAuthHeaders(token),
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update profile');
+      }
+
+      setUser(data.user);
+      return data.user as User;
+    },
+    [API_BASE, buildAuthHeaders, token]
+  );
+
+  const updateSettings = useCallback(
+    async (settings: UserSettings) => {
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.SETTINGS}`, {
+        method: 'PUT',
+        headers: buildAuthHeaders(token),
+        body: JSON.stringify(settings),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update settings');
+      }
+
+      setUser(data.user);
+      return data.user as User;
+    },
+    [API_BASE, buildAuthHeaders, token]
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.CHANGE_PASSWORD}`, {
+        method: 'POST',
+        headers: buildAuthHeaders(token),
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update password');
+      }
+    },
+    [API_BASE, buildAuthHeaders, token]
+  );
+
+  /**
+   * Step 1 — Forgot Password
+   * Sends a reset link to the email if it exists in the database.
+   * Always resolves (never rejects on "email not found") to prevent
+   * user enumeration — the backend already returns a generic message.
+   */
+  const requestPasswordReset = useCallback(
+    async (email: string) => {
+      const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.FORGOT_PASSWORD}`, {
+        method: 'POST',
+        headers: { 'Content-Type': AUTH_CONFIG.HEADERS.CONTENT_TYPE },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        // Only throw on server errors (5xx) — 200 with generic message is the expected success path
+        throw new Error(error.error || 'Password reset request failed. Please try again.');
+      }
+      // Callers can ignore the response body — the UI shows a generic success message regardless
+    },
+    [API_BASE]
+  );
+
+  /**
+   * Step 2 — Reset Password
+   * Submits the new password along with email + token from the reset link.
+   * Throws with a user-friendly message if the token is invalid or expired.
+   */
+  const resetPassword = useCallback(
+    async (email: string, token: string, password: string) => {
+      const response = await fetch(`${API_BASE}${AUTH_CONFIG.ENDPOINTS.RESET_PASSWORD}`, {
+        method: 'POST',
+        headers: { 'Content-Type': AUTH_CONFIG.HEADERS.CONTENT_TYPE },
+        body: JSON.stringify({ email, token, password }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Password reset failed. The link may have expired.');
+      }
+    },
+    [API_BASE]
+  );
 
   const value: AuthContextType = {
     user,
@@ -191,6 +376,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     login,
     logout,
     verifySession,
+    refreshUser,
+    updateProfile,
+    updateSettings,
+    changePassword,
+    requestPasswordReset,
+    resetPassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
