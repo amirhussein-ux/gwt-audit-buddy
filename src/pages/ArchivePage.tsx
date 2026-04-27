@@ -1,17 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, RotateCcw, Trash2, Search } from 'lucide-react';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
+import { MultiSelectToolbar } from '@/components/MultiSelectToolbar';
+import { brandColors } from '@/lib/brandColors';
+import { cn } from '@/lib/utils';
 
-/**
- * Archive page configuration
- */
 const ARCHIVE_CONFIG = {
   API: {
     BASE: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
@@ -25,8 +26,8 @@ const ARCHIVE_CONFIG = {
     },
   },
   QUERY: {
-    STALE_TIME: 5 * 60 * 1000, // 5 minutes
-    GC_TIME: 30 * 60 * 1000, // 30 minutes
+    STALE_TIME: 5 * 60 * 1000,
+    GC_TIME: 30 * 60 * 1000,
   },
   PAGINATION: {
     ITEMS_PER_PAGE: 20,
@@ -38,6 +39,7 @@ const ARCHIVE_CONFIG = {
       WEEK: 'week',
       MONTH: 'month',
     },
+    TAG_ALL: 'all',
   },
 };
 
@@ -45,7 +47,7 @@ interface ArchivedAudit {
   _id: string;
   auditUrl: string;
   status: string;
-  agency?: { name: string; acronym: string };
+  agency?: { name: string; acronym: string; tags?: string[] };
   auditedBy?: { username: string; email: string };
   archivedBy?: { username: string; email: string };
   archivedAt: string;
@@ -55,17 +57,21 @@ interface ArchivedAudit {
 
 export default function ArchivePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { token, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+  const [tagFilter, setTagFilter] = useState(ARCHIVE_CONFIG.FILTERS.TAG_ALL);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectionEnabled, setSelectionEnabled] = useState(false);
+  const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([]);
   const [isRestoring, setIsRestoring] = useState<string | null>(null);
-  const [restoreConfirmation, setRestoreConfirmation] = useState<{ isOpen: boolean; auditId: string | null }>({
+  const [isBulkRestoring, setIsBulkRestoring] = useState(false);
+  const [restoreConfirmation, setRestoreConfirmation] = useState<{ isOpen: boolean; auditIds: string[] }>({
     isOpen: false,
-    auditId: null,
+    auditIds: [],
   });
 
-  // Check authorization
   if (user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -83,7 +89,7 @@ export default function ArchivePage() {
     );
   }
 
-  const { data: archiveData, isLoading, error, refetch } = useQuery({
+  const { data: archiveData, isLoading, error } = useQuery({
     queryKey: ['archived-audits'],
     queryFn: async () => {
       const response = await fetch(`${ARCHIVE_CONFIG.API.BASE}${ARCHIVE_CONFIG.API.ENDPOINTS.ARCHIVE}/list`, {
@@ -105,13 +111,19 @@ export default function ArchivePage() {
     refetchOnReconnect: false,
   });
 
-  // Filter and search logic
+  const uniqueTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    (archiveData?.audits || []).forEach((audit: ArchivedAudit) => {
+      (audit.agency?.tags || []).forEach((tag) => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [archiveData?.audits]);
+
   const filteredArchives = useMemo(() => {
     if (!archiveData?.audits) return [];
 
     let filtered = archiveData.audits;
 
-    // Apply search filter
     if (searchQuery.trim()) {
       filtered = filtered.filter((audit: ArchivedAudit) =>
         audit.auditUrl.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -119,7 +131,10 @@ export default function ArchivePage() {
       );
     }
 
-    // Apply date filter
+    if (tagFilter !== ARCHIVE_CONFIG.FILTERS.TAG_ALL) {
+      filtered = filtered.filter((audit: ArchivedAudit) => (audit.agency?.tags || []).includes(tagFilter));
+    }
+
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(today);
@@ -134,9 +149,11 @@ export default function ArchivePage() {
 
         if (dateFilter === ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.TODAY) {
           return archiveDateOnly.getTime() === today.getTime();
-        } else if (dateFilter === ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
+        }
+        if (dateFilter === ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
           return archiveDateOnly >= weekAgo && archiveDateOnly <= today;
-        } else if (dateFilter === ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
+        }
+        if (dateFilter === ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
           return archiveDateOnly >= monthAgo && archiveDateOnly <= today;
         }
         return true;
@@ -144,247 +161,329 @@ export default function ArchivePage() {
     }
 
     return filtered;
-  }, [archiveData?.audits, searchQuery, dateFilter]);
+  }, [archiveData?.audits, searchQuery, dateFilter, tagFilter]);
 
-  // Calculate pagination
   const totalPages = Math.ceil(filteredArchives.length / ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE;
   const endIndex = startIndex + ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE;
   const paginatedArchives = filteredArchives.slice(startIndex, endIndex);
 
-  // Reset to page 1 when filters change
-  const previousSearchQuery = useRef(searchQuery);
   useEffect(() => {
-    if (searchQuery !== previousSearchQuery.current) {
-      setCurrentPage(1);
-      previousSearchQuery.current = searchQuery;
-    }
-  }, [searchQuery]);
+    setCurrentPage(1);
+  }, [searchQuery, dateFilter, tagFilter]);
+
+  const toggleSelectedAudit = (auditId: string) => {
+    setSelectedAuditIds((prev) =>
+      prev.includes(auditId) ? prev.filter((id) => id !== auditId) : [...prev, auditId]
+    );
+  };
 
   const handleRestoreClick = (auditId: string) => {
-    setRestoreConfirmation({ isOpen: true, auditId });
+    setRestoreConfirmation({ isOpen: true, auditIds: [auditId] });
+  };
+
+  const handleBulkRestoreClick = () => {
+    setRestoreConfirmation({ isOpen: true, auditIds: selectedAuditIds });
   };
 
   const handleRestoreConfirm = async () => {
-    if (!restoreConfirmation.auditId || !token) return;
+    if (restoreConfirmation.auditIds.length === 0 || !token) return;
 
-    setIsRestoring(restoreConfirmation.auditId);
+    const isBulk = restoreConfirmation.auditIds.length > 1;
+    if (isBulk) {
+      setIsBulkRestoring(true);
+    } else {
+      setIsRestoring(restoreConfirmation.auditIds[0]);
+    }
+
     try {
-      const response = await fetch(`${ARCHIVE_CONFIG.API.BASE}/audit/${restoreConfirmation.auditId}/restore`, {
+      const response = await fetch(`${ARCHIVE_CONFIG.API.BASE}/audit/restore/bulk`, {
         method: 'POST',
         headers: {
           [ARCHIVE_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
           [ARCHIVE_CONFIG.API.HEADERS.CONTENT_TYPE]: ARCHIVE_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
         },
+        body: JSON.stringify({ auditIds: restoreConfirmation.auditIds }),
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        alert(`Failed to restore: ${err.error}`);
-        setRestoreConfirmation({ isOpen: false, auditId: null });
-        return;
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to restore audit');
       }
 
-      alert('Audit restored successfully');
-      setRestoreConfirmation({ isOpen: false, auditId: null });
-      refetch();
-    } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      setRestoreConfirmation({ isOpen: false, auditId: null });
+      await queryClient.invalidateQueries({ queryKey: ['archived-audits'] });
+      await queryClient.invalidateQueries({ queryKey: ['audits'] });
+      setSelectedAuditIds((prev) => prev.filter((id) => !restoreConfirmation.auditIds.includes(id)));
+      setRestoreConfirmation({ isOpen: false, auditIds: [] });
+    } catch (restoreError) {
+      alert(`Error: ${restoreError instanceof Error ? restoreError.message : 'Unknown error'}`);
+      setRestoreConfirmation({ isOpen: false, auditIds: [] });
     } finally {
       setIsRestoring(null);
+      setIsBulkRestoring(false);
     }
   };
 
+  const filterInputClassName =
+    'h-11 rounded-2xl border-white/70 bg-white/78 pl-10 shadow-[0_10px_24px_rgba(148,163,184,0.08)] backdrop-blur-md';
+  const filterSelectClassName =
+    'h-11 rounded-2xl border border-white/70 bg-white/78 px-4 text-sm font-medium text-slate-700 shadow-[0_10px_24px_rgba(148,163,184,0.08)] backdrop-blur-md transition-colors hover:bg-white';
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="container mx-auto py-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <Button variant="outline" onClick={() => navigate('/')} className="mb-4">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
-            </Button>
-            <h1 className="text-3xl font-bold text-slate-900">Audit Archive</h1>
-            <p className="text-slate-600 mt-2">
-              Manage archived audit results (admin only)
-            </p>
-          </div>
+    <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
+      <section className="space-y-3">
+        <Button variant="outline" onClick={() => navigate('/')} className="rounded-2xl">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+        </Button>
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Archive</h1>
+          <p className="max-w-2xl text-sm leading-6 text-slate-600">
+            Manage archived audit results, filter by tags, and restore records back into the active results list.
+          </p>
         </div>
+      </section>
 
-        {/* Error State */}
-        {error && (
-          <Card className="border-red-200 bg-red-50">
-            <CardContent className="pt-6">
-              <p className="text-red-800">{error instanceof Error ? error.message : 'An error occurred'}</p>
-            </CardContent>
-          </Card>
-        )}
+      {archiveData?.audits?.length > 0 ? (
+        <MultiSelectToolbar
+          title="Restore Multiple Archived Audits"
+          selectedCount={selectedAuditIds.length}
+          totalCount={filteredArchives.length}
+          selectionEnabled={selectionEnabled}
+          isBusy={isBulkRestoring}
+          onToggleSelection={() => {
+            setSelectionEnabled((prev) => !prev);
+            if (selectionEnabled) {
+              setSelectedAuditIds([]);
+            }
+          }}
+          onSelectAll={() => setSelectedAuditIds(filteredArchives.map((audit: ArchivedAudit) => audit._id))}
+          onClear={() => setSelectedAuditIds([])}
+          primaryActionLabel="Restore Selected"
+          onPrimaryAction={handleBulkRestoreClick}
+        />
+      ) : null}
 
-        {/* Search and Filter Bar */}
-        {archiveData?.audits && archiveData.audits.length > 0 && (
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+      {error && (
+        <Card className={cn(brandColors.surfaces.dashboardCard, 'border-red-200 bg-red-50/90')}>
+          <CardContent className="pt-6">
+            <p className="text-red-800">{error instanceof Error ? error.message : 'An error occurred'}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {archiveData?.audits && archiveData.audits.length > 0 && (
+        <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/65')}>
+          <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:flex-wrap md:items-center">
+            <div className="relative min-w-[240px] flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Search by URL or agency..."
-                className="pl-10"
+                className={filterInputClassName}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-900"
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className={filterSelectClassName}
+              >
+                <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL}>All Dates</option>
+                <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.TODAY}>Today</option>
+                <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.WEEK}>Last Week</option>
+                <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.MONTH}>Last Month</option>
+              </select>
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className={filterSelectClassName}
+              >
+                <option value={ARCHIVE_CONFIG.FILTERS.TAG_ALL}>All Tags</option>
+                {uniqueTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !error && (!archiveData?.audits || archiveData.audits.length === 0) && (
+        <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
+          <CardContent className="text-center py-12">
+            <Trash2 className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+            <h3 className="mb-2 text-lg font-semibold text-slate-700">No Archived Audits</h3>
+            <p className="text-slate-600">Archive audits to manage them here</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !error && archiveData?.audits && archiveData.audits.length > 0 && filteredArchives.length === 0 && (
+        <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
+          <CardContent className="text-center py-12">
+            <Search className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+            <h3 className="mb-2 text-lg font-semibold text-slate-700">No Results Found</h3>
+            <p className="mb-4 text-slate-600">Try adjusting your search, date, or tag filters</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchQuery('');
+                setDateFilter(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+                setTagFilter(ARCHIVE_CONFIG.FILTERS.TAG_ALL);
+              }}
             >
-              <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL}>All Dates</option>
-              <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.TODAY}>Today</option>
-              <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.WEEK}>Last Week</option>
-              <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.MONTH}>Last Month</option>
-            </select>
-          </div>
-        )}
+              Clear Filters
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Empty State */}
-        {!isLoading && !error && (!archiveData?.audits || archiveData.audits.length === 0) && (
-          <Card className="border-2 border-dashed">
-            <CardContent className="text-center py-12">
-              <Trash2 className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-slate-700 mb-2">No Archived Audits</h3>
-              <p className="text-slate-600">Archive audits to manage them here</p>
-            </CardContent>
-          </Card>
-        )}
+      {isLoading ? (
+        <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/60')}>
+          <CardContent className="py-16 text-center">
+            <p className="text-slate-600">Loading archived audits...</p>
+          </CardContent>
+        </Card>
+      ) : paginatedArchives.length > 0 ? (
+        <Card className={brandColors.surfaces.dashboardCard}>
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="w-14 px-4 py-3 text-left font-semibold text-slate-900">Select</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Archived Date</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Auditor</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Agency</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Tags</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Web URL</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Reason</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-900">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedArchives.map((audit: ArchivedAudit) => {
+                    const isSelected = selectedAuditIds.includes(audit._id);
+                    return (
+                      <tr
+                        key={audit._id}
+                        className={cn(
+                          'border-b border-slate-100 transition-colors hover:bg-slate-50',
+                          isSelected && 'bg-violet-50/60'
+                        )}
+                      >
+                        <td className="px-4 py-4">
+                          {selectionEnabled ? (
+                            <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectedAudit(audit._id)} />
+                          ) : (
+                            <span className="text-xs text-slate-300">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-xs text-slate-600">
+                          {new Date(audit.archivedAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-4 text-sm font-medium text-slate-900">
+                          {audit.auditedBy?.username || audit.auditedBy?.email || '-'}
+                        </td>
+                        <td className="px-4 py-4 text-slate-900">
+                          {audit.agency?.name || '-'}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            {(audit.agency?.tags || []).length > 0 ? (
+                              (audit.agency?.tags || []).map((tag) => (
+                                <Badge key={tag} variant="secondary" className="rounded-full bg-sky-100 text-sky-700 hover:bg-sky-100">
+                                  {tag}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-400">No tags</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="max-w-xs truncate px-4 py-4 text-xs text-slate-600">
+                          {audit.auditUrl}
+                        </td>
+                        <td className="max-w-xs truncate px-4 py-4 text-xs text-slate-600">
+                          {audit.archiveReason || '-'}
+                        </td>
+                        <td className="px-4 py-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestoreClick(audit._id)}
+                            disabled={isRestoring === audit._id || isBulkRestoring}
+                            className="text-xs"
+                          >
+                            <RotateCcw className="mr-1 h-3 w-3" />
+                            {isRestoring === audit._id ? 'Restoring...' : 'Restore'}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-        {/* No results after filtering */}
-        {!isLoading && !error && archiveData?.audits && archiveData.audits.length > 0 && filteredArchives.length === 0 && (
-          <Card className="border-2 border-dashed">
-            <CardContent className="text-center py-12">
-              <Search className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-slate-700 mb-2">No Results Found</h3>
-              <p className="text-slate-600 mb-4">Try adjusting your search or filter criteria</p>
-              <Button variant="outline" onClick={() => { setSearchQuery(''); setDateFilter(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL); }}>
-                Clear Filters
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Archive Table */}
-        {isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          </div>
-        ) : (
-          <>
-            {paginatedArchives.length > 0 && (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-3 px-4 font-semibold text-slate-900">Archived Date</th>
-                          <th className="text-left py-3 px-4 font-semibold text-slate-900">Auditor</th>
-                          <th className="text-left py-3 px-4 font-semibold text-slate-900">Agency</th>
-                          <th className="text-left py-3 px-4 font-semibold text-slate-900">Web URL</th>
-                          <th className="text-left py-3 px-4 font-semibold text-slate-900">Reason</th>
-                          <th className="text-left py-3 px-4 font-semibold text-slate-900">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedArchives.map((audit: ArchivedAudit) => (
-                          <tr key={audit._id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                            <td className="py-4 px-4 text-slate-600 text-xs">
-                              {new Date(audit.archivedAt).toLocaleDateString()}
-                            </td>
-                            <td className="py-4 px-4 text-slate-900 font-medium text-sm">
-                              {audit.auditedBy?.username || audit.auditedBy?.email || '—'}
-                            </td>
-                            <td className="py-4 px-4 text-slate-900">
-                              {audit.agency?.name || '—'}
-                            </td>
-                            <td className="py-4 px-4 text-slate-600 max-w-xs truncate text-xs">
-                              {audit.auditUrl}
-                            </td>
-                            <td className="py-4 px-4 text-slate-600 max-w-xs truncate text-xs">
-                              {audit.archiveReason || '—'}
-                            </td>
-                            <td className="py-4 px-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRestoreClick(audit._id)}
-                                disabled={isRestoring === audit._id}
-                                className="text-xs"
-                              >
-                                <RotateCcw className="mr-1 h-3 w-3" />
-                                {isRestoring === audit._id ? 'Restoring...' : 'Restore'}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {filteredArchives.length > ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE && (
+              <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
+                <p className="text-sm text-slate-600">
+                  Showing {startIndex + 1}-{Math.min(endIndex, filteredArchives.length)} of {filteredArchives.length} archived audits
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </Button>
+                    ))}
                   </div>
-
-                  {/* Pagination */}
-                  {filteredArchives.length > ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE && (
-                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
-                      <p className="text-sm text-slate-600">
-                        Showing {startIndex + 1}-{Math.min(endIndex, filteredArchives.length)} of {filteredArchives.length} archived audits
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                          disabled={currentPage === 1}
-                        >
-                          Previous
-                        </Button>
-                        <div className="flex items-center gap-2">
-                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                            <Button
-                              key={page}
-                              variant={currentPage === page ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setCurrentPage(page)}
-                            >
-                              {page}
-                            </Button>
-                          ))}
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                          disabled={currentPage === totalPages}
-                        >
-                          Next
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             )}
-          </>
-        )}
-      </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      {/* Restore Confirmation Dialog */}
       <ConfirmationDialog
         isOpen={restoreConfirmation.isOpen}
-        title="Restore this audit?"
-        description="This audit will be moved back to your main results list. It will no longer appear in the archive."
-        confirmText="Restore"
+        title={restoreConfirmation.auditIds.length > 1 ? 'Restore selected audits?' : 'Restore this audit?'}
+        description={
+          restoreConfirmation.auditIds.length > 1
+            ? 'These audits will be moved back to the main results list and will no longer appear in the archive.'
+            : 'This audit will be moved back to your main results list. It will no longer appear in the archive.'
+        }
+        confirmText={restoreConfirmation.auditIds.length > 1 ? 'Restore Selected' : 'Restore'}
         cancelText="Keep Archived"
         variant="success"
-        isLoading={isRestoring !== null}
+        isLoading={isRestoring !== null || isBulkRestoring}
         onConfirm={handleRestoreConfirm}
-        onCancel={() => setRestoreConfirmation({ isOpen: false, auditId: null })}
+        onCancel={() => setRestoreConfirmation({ isOpen: false, auditIds: [] })}
       />
     </div>
   );

@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const mongoose = require('mongoose');
+const Session = require('../models/Session');
 
 // Session configuration constants
 const SESSION_CONFIG = {
@@ -7,29 +9,27 @@ const SESSION_CONFIG = {
   CLEANUP_INTERVAL_MS: 60 * 60 * 1000, // 1 hour
 };
 
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
 /**
- * Simple session management for MASID shared accounts
- * Uses in-memory sessions for now (can be replaced with Redis in production)
+ * Persistent session management backed by MongoDB.
+ * This survives process restarts and supports explicit revocation.
  */
 class SessionManager {
   constructor() {
-    this.sessions = new Map();
     this.cleanupTimer = null;
+    this.memorySessions = new Map();
   }
 
-  /**
-   * Start the cleanup routine
-   */
   startCleanupRoutine() {
-    if (this.cleanupTimer) return; // Prevent duplicate timers
+    if (this.cleanupTimer) return;
     this.cleanupTimer = setInterval(() => {
-      this.cleanupExpiredSessions();
+      this.cleanupExpiredSessions().catch((error) => {
+        console.error('[Auth] Session cleanup failed:', error.message);
+      });
     }, SESSION_CONFIG.CLEANUP_INTERVAL_MS);
   }
 
-  /**
-   * Stop the cleanup routine (for graceful shutdown)
-   */
   stopCleanupRoutine() {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
@@ -37,114 +37,155 @@ class SessionManager {
     }
   }
 
-  /**
-   * Create a new session token
-   * @param {string} userId - User ID
-   * @param {string} username - Username
-   * @param {string} role - User role
-   * @returns {string} Generated session token
-   */
-  createSession(userId, username, role) {
+  async createSession(userId, username, role) {
     const token = crypto.randomBytes(SESSION_CONFIG.TOKEN_LENGTH).toString('hex');
-    const expiresAt = Date.now() + SESSION_CONFIG.EXPIRY_MS;
+    const expiresAt = new Date(Date.now() + SESSION_CONFIG.EXPIRY_MS);
 
-    this.sessions.set(token, {
-      userId,
+    if (mongoose.connection.readyState !== 1) {
+      this.memorySessions.set(token, {
+        userId,
+        username,
+        role,
+        expiresAt,
+        lastActivity: new Date(),
+      });
+      return token;
+    }
+
+    await Session.create({
+      tokenHash: hashToken(token),
+      userId: new mongoose.Types.ObjectId(userId),
       username,
       role,
-      createdAt: Date.now(),
       expiresAt,
-      lastActivity: Date.now(),
+      lastActivity: new Date(),
     });
 
     return token;
   }
 
-  /**
-   * Validate session token
-   * @param {string} token - Session token
-   * @returns {Object} Validation result with valid flag and session data
-   */
-  validateSession(token) {
+  async validateSession(token) {
     if (!token || typeof token !== 'string') {
       return { valid: false, reason: 'Invalid token format' };
     }
 
-    const session = this.sessions.get(token);
+    if (mongoose.connection.readyState !== 1) {
+      const memorySession = this.memorySessions.get(token);
+      if (!memorySession) {
+        return { valid: false, reason: 'Token not found' };
+      }
+
+      const now = new Date();
+      if (now > new Date(memorySession.expiresAt)) {
+        this.memorySessions.delete(token);
+        return { valid: false, reason: 'Token expired' };
+      }
+
+      memorySession.lastActivity = now;
+      return { valid: true, session: memorySession };
+    }
+
+    const session = await Session.findOne({
+      tokenHash: hashToken(token),
+      revokedAt: null,
+    }).lean();
 
     if (!session) {
       return { valid: false, reason: 'Token not found' };
     }
 
-    const now = Date.now();
-    if (now > session.expiresAt) {
-      this.sessions.delete(token);
+    const now = new Date();
+    if (now > new Date(session.expiresAt)) {
+      await Session.deleteOne({ _id: session._id });
       return { valid: false, reason: 'Token expired' };
     }
 
-    // Update last activity (keep sessions alive if active)
-    session.lastActivity = now;
+    await Session.updateOne(
+      { _id: session._id },
+      { $set: { lastActivity: now } }
+    );
+
     return { valid: true, session };
   }
 
-  /**
-   * Revoke session token
-   * @param {string} token - Session token to revoke
-   * @returns {boolean} Whether revocation was successful
-   */
-  revokeSession(token) {
-    return this.sessions.delete(token);
-  }
-
-  /**
-   * Get session details (without validation)
-   * @param {string} token - Session token
-   * @returns {Object|undefined} Session data or undefined if not found
-   */
-  getSession(token) {
-    return this.sessions.get(token);
-  }
-
-  /**
-   * Cleanup expired sessions (runs periodically)
-   */
-  cleanupExpiredSessions() {
-    const now = Date.now();
-    let deletedCount = 0;
-
-    for (const [token, session] of this.sessions.entries()) {
-      if (now > session.expiresAt) {
-        this.sessions.delete(token);
-        deletedCount++;
-      }
+  async revokeSession(token) {
+    if (mongoose.connection.readyState !== 1) {
+      return this.memorySessions.delete(token);
     }
 
-    if (deletedCount > 0) {
-      console.log(`[Auth] Cleaned up ${deletedCount} expired session(s)`);
+    const result = await Session.updateOne(
+      { tokenHash: hashToken(token), revokedAt: null },
+      { $set: { revokedAt: new Date() } }
+    );
+    return result.modifiedCount > 0;
+  }
+
+  async revokeUserSessions(userId) {
+    if (mongoose.connection.readyState !== 1) {
+      let revokedCount = 0;
+      for (const [token, session] of this.memorySessions.entries()) {
+        if (session.userId?.toString() === userId.toString()) {
+          this.memorySessions.delete(token);
+          revokedCount++;
+        }
+      }
+      return revokedCount;
+    }
+
+    const result = await Session.updateMany(
+      { userId: new mongoose.Types.ObjectId(userId), revokedAt: null },
+      { $set: { revokedAt: new Date() } }
+    );
+    return result.modifiedCount;
+  }
+
+  async getSession(token) {
+    if (mongoose.connection.readyState !== 1) {
+      return this.memorySessions.get(token);
+    }
+
+    return Session.findOne({ tokenHash: hashToken(token), revokedAt: null }).lean();
+  }
+
+  async cleanupExpiredSessions() {
+    if (mongoose.connection.readyState !== 1) {
+      const now = new Date();
+      let deletedCount = 0;
+      for (const [token, session] of this.memorySessions.entries()) {
+        if (now > new Date(session.expiresAt)) {
+          this.memorySessions.delete(token);
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        console.log(`[Auth] Cleaned up ${deletedCount} expired in-memory session(s)`);
+      }
+      return;
+    }
+
+    const result = await Session.deleteMany({
+      $or: [
+        { expiresAt: { $lte: new Date() } },
+        { revokedAt: { $ne: null } },
+      ],
+    });
+
+    if (result.deletedCount > 0) {
+      console.log(`[Auth] Cleaned up ${result.deletedCount} expired/revoked session(s)`);
     }
   }
 }
 
-// Create global session manager instance
 const sessionManager = new SessionManager();
 sessionManager.startCleanupRoutine();
 
-/**
- * Extract token from request headers or cookies (fallback)
- * Priority: Authorization header > Cookie
- * Do NOT extract from body or query (prevents logging/caching vulnerabilities)
- *
- * @param {Object} req - Express request object
- * @returns {string|null} Token or null if not found
- */
 const extractToken = (req) => {
-  // Priority 1: Authorization header (most secure)
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7); // Remove 'Bearer ' prefix
+    return authHeader.substring(7);
   }
 
-  // Priority 2: HttpOnly cookie (as fallback)
   if (req.cookies?.sessionToken) {
     return req.cookies.sessionToken;
   }
@@ -152,25 +193,15 @@ const extractToken = (req) => {
   return null;
 };
 
-/**
- * Attach user data to request object
- * @param {Object} req - Express request object
- * @param {Object} session - Session data
- */
 const attachUserToRequest = (req, session) => {
   req.user = {
-    _id: session.userId,
+    _id: session.userId.toString(),
     username: session.username,
     role: session.role,
   };
 };
 
-/**
- * Authentication middleware
- * Verifies token from Authorization header or cookies
- * Attaches user info to req.user on success
- */
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const token = extractToken(req);
 
@@ -181,7 +212,7 @@ const authenticate = (req, res, next) => {
       });
     }
 
-    const { valid, session, reason } = sessionManager.validateSession(token);
+    const { valid, session, reason } = await sessionManager.validateSession(token);
 
     if (!valid) {
       return res.status(401).json({
@@ -202,11 +233,6 @@ const authenticate = (req, res, next) => {
   }
 };
 
-/**
- * Role-based access control middleware
- * @param {string|string[]} allowedRoles - Role(s) that are allowed to access this route
- * @returns {Function} Middleware function
- */
 const authorize = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -229,17 +255,12 @@ const authorize = (allowedRoles) => {
   };
 };
 
-/**
- * Optional authentication middleware
- * Doesn't reject if no token, but populates req.user if token is valid
- * Useful for routes that have different behavior based on auth status
- */
-const authenticateOptional = (req, res, next) => {
+const authenticateOptional = async (req, _res, next) => {
   try {
     const token = extractToken(req);
 
     if (token) {
-      const { valid, session } = sessionManager.validateSession(token);
+      const { valid, session } = await sessionManager.validateSession(token);
       if (valid) {
         attachUserToRequest(req, session);
         req.user.token = token;
@@ -249,7 +270,7 @@ const authenticateOptional = (req, res, next) => {
     next();
   } catch (error) {
     console.error('[Auth] Optional auth error:', error.message);
-    next(); // Don't reject on error for optional auth
+    next();
   }
 };
 

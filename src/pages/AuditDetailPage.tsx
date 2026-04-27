@@ -35,6 +35,14 @@ interface CheckItem {
   status: 'Pass' | 'Fail' | 'N/A' | 'NotTested';
 }
 
+type AssessmentValue = boolean | null;
+
+interface AssessmentRow {
+  label: string;
+  value: AssessmentValue;
+  remark: string;
+}
+
 interface AuditLog {
   _id: string;
   auditUrl: string;
@@ -176,6 +184,19 @@ export default function AuditDetailPage() {
     checks.some((c) => keys.includes(c.key) && c.status === 'Pass');
   const hasFail = (...keys: string[]) =>
     checks.some((c) => keys.includes(c.key) && c.status === 'Fail');
+  const getStatus = (...keys: string[]) => {
+    const matchingChecks = checks.filter((c) => keys.includes(c.key));
+
+    if (matchingChecks.some((c) => c.status === 'Pass')) {
+      return 'Pass';
+    }
+
+    if (matchingChecks.some((c) => c.status === 'Fail')) {
+      return 'Fail';
+    }
+
+    return 'N/A';
+  };
 
   // Helper: Count passed checks matching any key pattern
   const countPass = (...patterns: string[]) => {
@@ -186,6 +207,45 @@ export default function AuditDetailPage() {
 
   // Helper: Derive boolean from check counts (at least 1 pass = true)
   const hasChecksPassing = (...patterns: string[]) => countPass(...patterns) > 0;
+  const isCancelledAudit = audit.status === 'cancelled';
+
+  const buildAssessmentRow = (
+    label: string,
+    keys: string[],
+    passRemark: string,
+    failRemark: string,
+    naRemark: string
+  ): AssessmentRow => {
+    const status = getStatus(...keys);
+
+    if (status === 'Pass') {
+      return { label, value: true, remark: passRemark };
+    }
+
+    if (status === 'Fail') {
+      return { label, value: false, remark: failRemark };
+    }
+
+    return {
+      label,
+      value: null,
+      remark: isCancelledAudit
+        ? 'Audit was cancelled before this guideline could be evaluated.'
+        : naRemark,
+    };
+  };
+
+  const renderAssessmentValue = (value: AssessmentValue) => {
+    if (value === null) {
+      return <span className="font-bold text-sm text-slate-500">N/A</span>;
+    }
+
+    return (
+      <span className={`font-bold text-lg ${value ? 'text-green-600' : 'text-red-600'}`}>
+        {value ? '1' : '0'}
+      </span>
+    );
+  };
 
   // DEBUG: Log what checks we have
   console.log(`[AuditDetailPage] ${audit.auditUrl} - Audit ID: ${id}`);
@@ -652,22 +712,18 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">D. E-participation tools to obtain public opinion</td>
                     </tr>
                     {[
-                      { label: '1. Discussion Forums', value: true, remark: 'Forums available' },
-                      { label: '2. Customer Satisfaction Surveys', value: true, remark: 'Surveys offered' },
-                      { label: '3. Opinion Polls', value: true, remark: 'Polls implemented' },
-                      { label: '4. Blogs', value: true, remark: 'Blog section present' },
-                      { label: '5. Social Networking Sites', value: true, remark: 'SNS integration available' },
-                      { label: '6. Bulletin Boards (front page itself)', value: true, remark: 'Bulletin board available' },
-                      { label: '7. Chat Room', value: true, remark: 'Chat capability present' },
-                      { label: '8. Web Casting', value: true, remark: 'Web casting available' },
+                      buildAssessmentRow('1. Discussion Forums', ['tools.discussion_forums'], 'Forums available', 'Forums not detected', 'Discussion forum detection is not yet implemented.'),
+                      buildAssessmentRow('2. Customer Satisfaction Surveys', ['tools.satisfaction_surveys'], 'Surveys offered', 'Survey tools not detected', 'Customer satisfaction survey detection is not yet implemented.'),
+                      buildAssessmentRow('3. Opinion Polls', ['tools.opinion_polls'], 'Polls implemented', 'Polls not detected', 'Opinion poll detection is not yet implemented.'),
+                      buildAssessmentRow('4. Blogs', ['tools.blogs'], 'Blog section present', 'Blog section not detected', 'Blog detection is not yet implemented.'),
+                      buildAssessmentRow('5. Social Networking Sites', ['tools.social_networks'], 'SNS integration available', 'SNS integration not detected', 'Social networking integration detection is not yet implemented.'),
+                      buildAssessmentRow('6. Bulletin Boards (front page itself)', ['tools.bulletin_boards'], 'Bulletin board available', 'Bulletin board not detected', 'Bulletin board detection is not yet implemented.'),
+                      buildAssessmentRow('7. Chat Room', ['tools.chat_room'], 'Chat capability present', 'Chat capability not detected', 'Chat room detection is not yet implemented.'),
+                      buildAssessmentRow('8. Web Casting', ['tools.webcasting'], 'Web casting available', 'Web casting not detected', 'Web casting detection is not yet implemented.'),
                     ].map((item, idx) => (
                       <tr key={`s4d${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
-                        <td className="text-center p-3">
-                          <span className={`font-bold text-lg ${item.value ? 'text-green-600' : 'text-red-600'}`}>
-                            {item.value ? '1' : '0'}
-                          </span>
-                        </td>
+                        <td className="text-center p-3">{renderAssessmentValue(item.value)}</td>
                         <td className="p-3 text-slate-600">{item.remark}</td>
                       </tr>
                     ))}
@@ -677,17 +733,13 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">E. Citizen feedback on the national strategy, policies and e-services</td>
                     </tr>
                     {[
-                      { label: '1. E-information', value: true, remark: 'Feedback channel available' },
-                      { label: '2. E-consultation', value: true, remark: 'Consultation platform present' },
-                      { label: '3. E-decision-making', value: true, remark: 'Decision-making transparency' },
+                      buildAssessmentRow('1. E-information', ['feedback.strategy_feedback'], 'Feedback channel available', 'Feedback channel not detected', 'Citizen feedback evaluation is not yet implemented.'),
+                      buildAssessmentRow('2. E-consultation', ['feedback.strategy_feedback'], 'Consultation platform present', 'Consultation platform not detected', 'Citizen consultation evaluation is not yet implemented.'),
+                      buildAssessmentRow('3. E-decision-making', ['feedback.strategy_feedback'], 'Decision-making transparency', 'Decision-making transparency not detected', 'Citizen decision-making evaluation is not yet implemented.'),
                     ].map((item, idx) => (
                       <tr key={`s4e${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
-                        <td className="text-center p-3">
-                          <span className={`font-bold text-lg ${item.value ? 'text-green-600' : 'text-red-600'}`}>
-                            {item.value ? '1' : '0'}
-                          </span>
-                        </td>
+                        <td className="text-center p-3">{renderAssessmentValue(item.value)}</td>
                         <td className="p-3 text-slate-600">{item.remark}</td>
                       </tr>
                     ))}
@@ -697,17 +749,13 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">F. Provision for publishing the results of citizen feedback</td>
                     </tr>
                     {[
-                      { label: '1. E-information', value: true, remark: 'Results published' },
-                      { label: '2. E-consultation', value: true, remark: 'Feedback summary available' },
-                      { label: '3. E-decision-making', value: true, remark: 'Decision results transparent' },
+                      buildAssessmentRow('1. E-information', ['feedback.publication_results'], 'Results published', 'Results publishing not detected', 'Feedback publication evaluation is not yet implemented.'),
+                      buildAssessmentRow('2. E-consultation', ['feedback.publication_results'], 'Feedback summary available', 'Feedback summary not detected', 'Feedback summary evaluation is not yet implemented.'),
+                      buildAssessmentRow('3. E-decision-making', ['feedback.publication_results'], 'Decision results transparent', 'Decision result transparency not detected', 'Decision result publication evaluation is not yet implemented.'),
                     ].map((item, idx) => (
                       <tr key={`s4f${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
-                        <td className="text-center p-3">
-                          <span className={`font-bold text-lg ${item.value ? 'text-green-600' : 'text-red-600'}`}>
-                            {item.value ? '1' : '0'}
-                          </span>
-                        </td>
+                        <td className="text-center p-3">{renderAssessmentValue(item.value)}</td>
                         <td className="p-3 text-slate-600">{item.remark}</td>
                       </tr>
                     ))}
@@ -717,17 +765,13 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">G. Archive on responses by government to citizen\'s questions, queries and inputs</td>
                     </tr>
                     {[
-                      { label: '1. E-information', value: true, remark: 'Response archive available' },
-                      { label: '2. E-consultation', value: true, remark: 'Consultation history available' },
-                      { label: '3. E-decision-making', value: true, remark: 'Decision history documented' },
+                      buildAssessmentRow('1. E-information', ['feedback.archive_responses'], 'Response archive available', 'Response archive not detected', 'Response archive evaluation is not yet implemented.'),
+                      buildAssessmentRow('2. E-consultation', ['feedback.archive_responses'], 'Consultation history available', 'Consultation history not detected', 'Consultation history evaluation is not yet implemented.'),
+                      buildAssessmentRow('3. E-decision-making', ['feedback.archive_responses'], 'Decision history documented', 'Decision history not detected', 'Decision history evaluation is not yet implemented.'),
                     ].map((item, idx) => (
                       <tr key={`s4g${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
-                        <td className="text-center p-3">
-                          <span className={`font-bold text-lg ${item.value ? 'text-green-600' : 'text-red-600'}`}>
-                            {item.value ? '1' : '0'}
-                          </span>
-                        </td>
+                        <td className="text-center p-3">{renderAssessmentValue(item.value)}</td>
                         <td className="p-3 text-slate-600">{item.remark}</td>
                       </tr>
                     ))}

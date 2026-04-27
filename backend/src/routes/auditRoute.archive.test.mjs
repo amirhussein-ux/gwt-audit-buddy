@@ -60,7 +60,7 @@ describe('POST /api/audit/:id/archive input validation', () => {
     await stopServer(server);
 
     for (const token of createdTokens) {
-      sessionManager.revokeSession(token);
+      await sessionManager.revokeSession(token);
     }
 
     createdTokens.length = 0;
@@ -68,7 +68,7 @@ describe('POST /api/audit/:id/archive input validation', () => {
 
   it('returns 400 for invalid audit id format', async () => {
     const validUserId = new mongoose.Types.ObjectId().toString();
-    const token = sessionManager.createSession(validUserId, 'admin-user', 'admin');
+    const token = await sessionManager.createSession(validUserId, 'admin-user', 'admin');
     createdTokens.push(token);
 
     const result = await postJson(server, '/api/audit/not-a-valid-object-id/archive', token, {
@@ -83,7 +83,7 @@ describe('POST /api/audit/:id/archive input validation', () => {
   });
 
   it('returns 401 for invalid session user id format', async () => {
-    const token = sessionManager.createSession('invalid-user-id', 'admin-user', 'admin');
+    const token = await sessionManager.createSession('invalid-user-id', 'admin-user', 'admin');
     createdTokens.push(token);
 
     const validAuditId = new mongoose.Types.ObjectId().toString();

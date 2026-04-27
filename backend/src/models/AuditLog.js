@@ -181,6 +181,29 @@ const auditLogSchema = new mongoose.Schema(
     },
 
     /**
+     * Audit cancellation lifecycle metadata
+     */
+    cancellation: {
+      requestedAt: {
+        type: Date,
+        default: null,
+      },
+      requestedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+      completedAt: {
+        type: Date,
+        default: null,
+      },
+      message: {
+        type: String,
+        default: '',
+      },
+    },
+
+    /**
      * Archive status and metadata
      */
     isArchived: {
@@ -219,5 +242,6 @@ auditLogSchema.index({ 'transparencySeal.found': 1 });
 auditLogSchema.index({ createdAt: -1 });
 auditLogSchema.index({ isArchived: 1, archivedAt: -1 }); // For archive queries
 auditLogSchema.index({ auditedBy: 1, isArchived: 1 }); // For user audit queries
+auditLogSchema.index({ 'cancellation.requestedAt': -1 });
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

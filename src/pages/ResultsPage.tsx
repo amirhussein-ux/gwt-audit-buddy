@@ -4,19 +4,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { CheckCircle, ArrowRight, Search, Archive } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
+import { MultiSelectToolbar } from '@/components/MultiSelectToolbar';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
 
 const RESULTS_CONFIG = {
   API: {
     BASE: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
-    ENDPOINTS: {
-      AUDITS: '/audit',
-    },
     HEADERS: {
       AUTHORIZATION: 'Authorization',
       CONTENT_TYPE: 'Content-Type',
@@ -40,6 +39,7 @@ const RESULTS_CONFIG = {
       WEEK: 'week',
       MONTH: 'month',
     },
+    TAG_ALL: 'all',
   },
   ROUTES: {
     AUDIT: '/audit',
@@ -53,6 +53,11 @@ interface AuditResult {
   createdAt: string;
   pst?: { found: boolean };
   transparencySeal?: { found: boolean };
+  agency?: {
+    name?: string;
+    acronym?: string;
+    tags?: string[];
+  };
 }
 
 export default function ResultsPage() {
@@ -64,53 +69,21 @@ export default function ResultsPage() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+  const [tagFilter, setTagFilter] = useState(RESULTS_CONFIG.FILTERS.TAG_ALL);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectionEnabled, setSelectionEnabled] = useState(false);
+  const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([]);
   const [archivingId, setArchivingId] = useState<string | null>(null);
-  const [archiveConfirmation, setArchiveConfirmation] = useState<{ isOpen: boolean; auditId: string | null }>({
+  const [isBulkArchiving, setIsBulkArchiving] = useState(false);
+  const [archiveConfirmation, setArchiveConfirmation] = useState<{ isOpen: boolean; auditIds: string[] }>({
     isOpen: false,
-    auditId: null,
+    auditIds: [],
   });
-
-  const handleArchiveClick = (auditId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setArchiveConfirmation({ isOpen: true, auditId });
-  };
-
-  const handleArchiveConfirm = async () => {
-    if (!archiveConfirmation.auditId || !token) return;
-
-    setArchivingId(archiveConfirmation.auditId);
-    try {
-      const response = await fetch(`${RESULTS_CONFIG.API.BASE}/audit/${archiveConfirmation.auditId}/archive`, {
-        method: 'POST',
-        headers: {
-          [RESULTS_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
-          [RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE]: RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
-        },
-        body: JSON.stringify({ reason: 'Archived from results page' }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to archive audit');
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ['audits'] });
-      await queryClient.invalidateQueries({ queryKey: ['archived-audits'] });
-      setArchiveConfirmation({ isOpen: false, auditId: null });
-    } catch (error) {
-      console.error('Archive error:', error);
-      alert(`Error archiving audit: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setArchiveConfirmation({ isOpen: false, auditId: null });
-    } finally {
-      setArchivingId(null);
-    }
-  };
 
   const { data: audits, isLoading, error } = useQuery({
     queryKey: ['audits'],
     queryFn: async () => {
-      const response = await fetch(`${RESULTS_CONFIG.API.BASE}${RESULTS_CONFIG.API.ENDPOINTS.AUDITS}`, {
+      const response = await fetch(`${RESULTS_CONFIG.API.BASE}/audit`, {
         headers: {
           [RESULTS_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
           [RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE]: RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
@@ -169,6 +142,14 @@ export default function ResultsPage() {
     }
   };
 
+  const uniqueTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    (audits || []).forEach((audit: AuditResult) => {
+      (audit.agency?.tags || []).forEach((tag) => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [audits]);
+
   const filteredAudits = useMemo(() => {
     if (!audits) return [];
 
@@ -176,8 +157,13 @@ export default function ResultsPage() {
 
     if (searchQuery.trim()) {
       filtered = filtered.filter((audit: AuditResult) =>
-        audit.auditUrl.toLowerCase().includes(searchQuery.toLowerCase())
+        audit.auditUrl.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (audit.agency?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
+    }
+
+    if (tagFilter !== RESULTS_CONFIG.FILTERS.TAG_ALL) {
+      filtered = filtered.filter((audit: AuditResult) => (audit.agency?.tags || []).includes(tagFilter));
     }
 
     const now = new Date();
@@ -194,9 +180,11 @@ export default function ResultsPage() {
 
         if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.TODAY) {
           return auditDateOnly.getTime() === today.getTime();
-        } else if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
+        }
+        if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
           return auditDateOnly >= weekAgo && auditDateOnly <= today;
-        } else if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
+        }
+        if (dateFilter === RESULTS_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
           return auditDateOnly >= monthAgo && auditDateOnly <= today;
         }
         return true;
@@ -204,7 +192,7 @@ export default function ResultsPage() {
     }
 
     return filtered;
-  }, [audits, searchQuery, dateFilter]);
+  }, [audits, searchQuery, dateFilter, tagFilter]);
 
   const totalPages = Math.ceil(filteredAudits.length / RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE;
@@ -213,11 +201,68 @@ export default function ResultsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, dateFilter]);
+  }, [searchQuery, dateFilter, tagFilter]);
 
   const handleStayOnPage = () => {
     localStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
     setShowCompletionModal(false);
+  };
+
+  const toggleSelectedAudit = (auditId: string) => {
+    setSelectedAuditIds((prev) =>
+      prev.includes(auditId) ? prev.filter((id) => id !== auditId) : [...prev, auditId]
+    );
+  };
+
+  const handleArchiveClick = (auditId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setArchiveConfirmation({ isOpen: true, auditIds: [auditId] });
+  };
+
+  const handleBulkArchiveClick = () => {
+    setArchiveConfirmation({ isOpen: true, auditIds: selectedAuditIds });
+  };
+
+  const handleArchiveConfirm = async () => {
+    if (archiveConfirmation.auditIds.length === 0 || !token) return;
+
+    const isBulk = archiveConfirmation.auditIds.length > 1;
+    if (isBulk) {
+      setIsBulkArchiving(true);
+    } else {
+      setArchivingId(archiveConfirmation.auditIds[0]);
+    }
+
+    try {
+      const response = await fetch(`${RESULTS_CONFIG.API.BASE}/audit/archive/bulk`, {
+        method: 'POST',
+        headers: {
+          [RESULTS_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
+          [RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE]: RESULTS_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
+        },
+        body: JSON.stringify({
+          auditIds: archiveConfirmation.auditIds,
+          reason: 'Archived from results page',
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to archive audit');
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['audits'] });
+      await queryClient.invalidateQueries({ queryKey: ['archived-audits'] });
+      setSelectedAuditIds((prev) => prev.filter((id) => !archiveConfirmation.auditIds.includes(id)));
+      setArchiveConfirmation({ isOpen: false, auditIds: [] });
+    } catch (archiveError) {
+      console.error('Archive error:', archiveError);
+      alert(`Error archiving audit: ${archiveError instanceof Error ? archiveError.message : 'Unknown error'}`);
+      setArchiveConfirmation({ isOpen: false, auditIds: [] });
+    } finally {
+      setArchivingId(null);
+      setIsBulkArchiving(false);
+    }
   };
 
   const filterInputClassName =
@@ -259,7 +304,7 @@ export default function ResultsPage() {
             Web Accessibility Audit Results
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Browse completed audit runs, filter by timeline, and open the full compliance report for each website.
+            Browse completed audit runs, filter by timeline and tags, and open the full compliance report for each website.
           </p>
         </div>
       </section>
@@ -279,24 +324,52 @@ export default function ResultsPage() {
           </Card>
         )}
 
+        {user?.role === 'admin' && audits && audits.length > 0 ? (
+          <MultiSelectToolbar
+            title="Archive Multiple Results"
+            selectedCount={selectedAuditIds.length}
+            totalCount={filteredAudits.length}
+            selectionEnabled={selectionEnabled}
+            isBusy={isBulkArchiving}
+            onToggleSelection={() => {
+              setSelectionEnabled((prev) => !prev);
+              if (selectionEnabled) {
+                setSelectedAuditIds([]);
+              }
+            }}
+            onSelectAll={() => setSelectedAuditIds(filteredAudits.map((audit: AuditResult) => audit._id))}
+            onClear={() => setSelectedAuditIds([])}
+            primaryActionLabel="Archive Selected"
+            onPrimaryAction={handleBulkArchiveClick}
+          />
+        ) : null}
+
         {audits && audits.length > 0 && (
           <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/65')}>
-            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center">
-              <div className="relative flex-1">
+            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:flex-wrap md:items-center">
+              <div className="relative min-w-[240px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="Search by domain..."
+                  placeholder="Search by domain or agency..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className={filterInputClassName}
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className={filterSelectClassName}>
                   <option value="all">All Dates</option>
                   <option value="today">Today</option>
                   <option value="week">Last 7 Days</option>
                   <option value="month">Last 30 Days</option>
+                </select>
+                <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={filterSelectClassName}>
+                  <option value={RESULTS_CONFIG.FILTERS.TAG_ALL}>All Tags</option>
+                  {uniqueTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
                 </select>
               </div>
             </CardContent>
@@ -328,12 +401,13 @@ export default function ResultsPage() {
               <div className="text-center">
                 <h3 className="mb-2 text-lg font-medium text-slate-900">No Results Found</h3>
                 <p className="mb-6 text-slate-600">
-                  Try adjusting your search or date filter
+                  Try adjusting your search, date, or tag filter
                 </p>
                 <Button
                   onClick={() => {
                     setSearchQuery('');
                     setDateFilter(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+                    setTagFilter(RESULTS_CONFIG.FILTERS.TAG_ALL);
                   }}
                   className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
                 >
@@ -353,98 +427,129 @@ export default function ResultsPage() {
         ) : (
           <>
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {paginatedAudits?.map((audit: AuditResult) => (
-                <Card
-                  key={audit._id}
-                  className={cn(
-                    brandColors.surfaces.dashboardCard,
-                    'cursor-pointer bg-white/72 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(129,140,248,0.12)]'
-                  )}
-                  onClick={() => navigate(`/audit/${audit._id}`)}
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <CardTitle className="truncate text-lg text-slate-900">{audit.auditUrl}</CardTitle>
-                        <CardDescription className="mt-1 text-slate-500">
-                          {new Date(audit.createdAt).toLocaleDateString()} at{' '}
-                          {new Date(audit.createdAt).toLocaleTimeString()}
-                        </CardDescription>
-                      </div>
-                      <Badge
-                        variant={audit.status === 'completed' ? 'default' : 'secondary'}
-                        className={cn(
-                          'rounded-full',
-                          audit.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-100'
-                        )}
-                      >
-                        {audit.status}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="rounded-2xl bg-blue-50/90 p-4 text-center shadow-sm">
-                        <p className="text-xs text-slate-600">PST</p>
-                        <p
-                          className={cn(
-                            'text-sm font-semibold',
-                            audit.pst?.found ? 'text-emerald-700' : 'text-rose-600'
-                          )}
-                        >
-                          {audit.pst?.found ? 'Present' : 'Missing'}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl bg-violet-50/90 p-4 text-center shadow-sm">
-                        <p className="text-xs text-slate-600">Transparency Seal</p>
-                        <p
-                          className={cn(
-                            'text-sm font-semibold',
-                            audit.transparencySeal?.found ? 'text-emerald-700' : 'text-rose-600'
-                          )}
-                        >
-                          {audit.transparencySeal?.found ? 'Present' : 'Missing'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-slate-200/70 pt-3">
-                      <p className="mb-2 text-xs font-semibold text-slate-600">Evaluations Performed</p>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="secondary" className="rounded-full bg-violet-100 text-violet-700 hover:bg-violet-100">Web Presence</Badge>
-                        <Badge variant="secondary" className="rounded-full bg-sky-100 text-sky-700 hover:bg-sky-100">Web Usability</Badge>
-                        <Badge variant="secondary" className="rounded-full bg-amber-100 text-amber-700 hover:bg-amber-100">Performance</Badge>
-                      </div>
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      className="w-full rounded-2xl border-white/60 bg-white/70 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/audit/${audit._id}`);
-                      }}
-                    >
-                      View Full Report
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-
-                    {user?.role === 'admin' && (
-                      <Button
-                        variant="destructive"
-                        className="w-full rounded-2xl"
-                        onClick={(e) => handleArchiveClick(audit._id, e)}
-                        disabled={archivingId === audit._id}
-                      >
-                        <Archive className="mr-2 h-4 w-4" />
-                        {archivingId === audit._id ? 'Archiving...' : 'Archive'}
-                      </Button>
+              {paginatedAudits?.map((audit: AuditResult) => {
+                const isSelected = selectedAuditIds.includes(audit._id);
+                return (
+                  <Card
+                    key={audit._id}
+                    className={cn(
+                      brandColors.surfaces.dashboardCard,
+                      'cursor-pointer bg-white/72 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(129,140,248,0.12)]',
+                      isSelected && 'ring-2 ring-violet-300'
                     )}
-                  </CardContent>
-                </Card>
-              ))}
+                    onClick={() => navigate(`/audit/${audit._id}`)}
+                  >
+                    <CardHeader>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
+                          {selectionEnabled && user?.role === 'admin' ? (
+                            <div
+                              className="pt-1"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleSelectedAudit(audit._id);
+                              }}
+                            >
+                              <Checkbox checked={isSelected} />
+                            </div>
+                          ) : null}
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="truncate text-lg text-slate-900">{audit.auditUrl}</CardTitle>
+                            <CardDescription className="mt-1 text-slate-500">
+                              {new Date(audit.createdAt).toLocaleDateString()} at{' '}
+                              {new Date(audit.createdAt).toLocaleTimeString()}
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <Badge
+                          variant={audit.status === 'completed' ? 'default' : 'secondary'}
+                          className={cn(
+                            'rounded-full',
+                            audit.status === 'completed' || audit.status === 'success'
+                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-100'
+                          )}
+                        >
+                          {audit.status}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {(audit.agency?.tags || []).length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(audit.agency?.tags || []).map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant="secondary"
+                              className="rounded-full bg-sky-100 text-sky-700 hover:bg-sky-100"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="rounded-2xl bg-blue-50/90 p-4 text-center shadow-sm">
+                          <p className="text-xs text-slate-600">PST</p>
+                          <p
+                            className={cn(
+                              'text-sm font-semibold',
+                              audit.pst?.found ? 'text-emerald-700' : 'text-rose-600'
+                            )}
+                          >
+                            {audit.pst?.found ? 'Present' : 'Missing'}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl bg-violet-50/90 p-4 text-center shadow-sm">
+                          <p className="text-xs text-slate-600">Transparency Seal</p>
+                          <p
+                            className={cn(
+                              'text-sm font-semibold',
+                              audit.transparencySeal?.found ? 'text-emerald-700' : 'text-rose-600'
+                            )}
+                          >
+                            {audit.transparencySeal?.found ? 'Present' : 'Missing'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-200/70 pt-3">
+                        <p className="mb-2 text-xs font-semibold text-slate-600">Evaluations Performed</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary" className="rounded-full bg-violet-100 text-violet-700 hover:bg-violet-100">Web Presence</Badge>
+                          <Badge variant="secondary" className="rounded-full bg-sky-100 text-sky-700 hover:bg-sky-100">Web Usability</Badge>
+                          <Badge variant="secondary" className="rounded-full bg-amber-100 text-amber-700 hover:bg-amber-100">Performance</Badge>
+                        </div>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        className="w-full rounded-2xl border-white/60 bg-white/70 hover:bg-white"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/audit/${audit._id}`);
+                        }}
+                      >
+                        View Full Report
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+
+                      {user?.role === 'admin' && (
+                        <Button
+                          variant="destructive"
+                          className="w-full rounded-2xl"
+                          onClick={(e) => handleArchiveClick(audit._id, e)}
+                          disabled={archivingId === audit._id || isBulkArchiving}
+                        >
+                          <Archive className="mr-2 h-4 w-4" />
+                          {archivingId === audit._id ? 'Archiving...' : 'Archive'}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
 
             {filteredAudits.length > RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE && (
@@ -503,14 +608,18 @@ export default function ResultsPage() {
 
       <ConfirmationDialog
         isOpen={archiveConfirmation.isOpen}
-        title="Archive this audit?"
-        description="This audit will be moved to the archive. You can restore it later from the Archive page. Archived audits are hidden from the main results list."
-        confirmText="Archive"
+        title={archiveConfirmation.auditIds.length > 1 ? 'Archive selected audits?' : 'Archive this audit?'}
+        description={
+          archiveConfirmation.auditIds.length > 1
+            ? 'These audits will be moved to the archive. You can restore them later from the Archive page.'
+            : 'This audit will be moved to the archive. You can restore it later from the Archive page. Archived audits are hidden from the main results list.'
+        }
+        confirmText={archiveConfirmation.auditIds.length > 1 ? 'Archive Selected' : 'Archive'}
         cancelText="Keep it"
         variant="warning"
-        isLoading={archivingId !== null}
+        isLoading={archivingId !== null || isBulkArchiving}
         onConfirm={handleArchiveConfirm}
-        onCancel={() => setArchiveConfirmation({ isOpen: false, auditId: null })}
+        onCancel={() => setArchiveConfirmation({ isOpen: false, auditIds: [] })}
       />
     </div>
   );

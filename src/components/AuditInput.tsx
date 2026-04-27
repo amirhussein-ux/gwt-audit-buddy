@@ -43,6 +43,7 @@ interface AuditInputProps {
     }
   ) => void;
   isAuditing: boolean;
+  cancellationState?: 'idle' | 'in_progress' | 'complete';
   initialOptions?: {
     maxPages: number;
     maxDepth: number;
@@ -110,7 +111,12 @@ const clampValue = (value: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, value));
 };
 
-const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProps) => {
+const AuditInput = ({
+  onStartAudit,
+  isAuditing,
+  cancellationState = 'idle',
+  initialOptions,
+}: AuditInputProps) => {
   const { toast } = useToast();
   const [url, setUrl] = useState("");
   const [maxPages, setMaxPages] = useState(initialOptions?.maxPages ?? AUDIT_INPUT_CONFIG.MAX_PAGES_DEFAULT);
@@ -168,6 +174,20 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
         </p>
       </div>
 
+      {cancellationState !== 'idle' ? (
+        <div
+          className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${
+            cancellationState === 'complete'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-amber-200 bg-amber-50 text-amber-800'
+          }`}
+        >
+          {cancellationState === 'complete'
+            ? 'Audit Cancellation Complete!'
+            : 'Audit Cancellation still in progress'}
+        </div>
+      ) : null}
+
       <div className="space-y-4" onDrop={handleUrlDrop} onDragOver={handleUrlDragOver}>
         <div className="relative">
           <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -179,7 +199,7 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
               if (urlError) setUrlError(null);
             }}
             className="h-12 rounded-2xl border-white/70 bg-white/90 pl-10 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
-            disabled={isAuditing}
+            disabled={isAuditing || cancellationState === 'in_progress'}
           />
         </div>
 
@@ -193,7 +213,7 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
               value={maxPages}
               onChange={(e) => setMaxPages(Number(e.target.value) || AUDIT_INPUT_CONFIG.MAX_PAGES_MIN)}
               className="rounded-2xl border-white/70 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
-              disabled={isAuditing}
+              disabled={isAuditing || cancellationState === 'in_progress'}
             />
           </div>
           <div className="space-y-1">
@@ -205,7 +225,7 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
               value={maxDepth}
               onChange={(e) => setMaxDepth(Number(e.target.value) || AUDIT_INPUT_CONFIG.MAX_DEPTH_MIN)}
               className="rounded-2xl border-white/70 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
-              disabled={isAuditing}
+              disabled={isAuditing || cancellationState === 'in_progress'}
             />
           </div>
           <div className="space-y-1">
@@ -217,18 +237,18 @@ const AuditInput = ({ onStartAudit, isAuditing, initialOptions }: AuditInputProp
               value={concurrency}
               onChange={(e) => setConcurrency(Number(e.target.value) || AUDIT_INPUT_CONFIG.CONCURRENCY_MIN)}
               className="rounded-2xl border-white/70 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
-              disabled={isAuditing}
+              disabled={isAuditing || cancellationState === 'in_progress'}
             />
           </div>
         </div>
 
         <Button
           onClick={handleSubmit}
-          disabled={!url.trim() || isAuditing || !!urlError}
+          disabled={!url.trim() || isAuditing || cancellationState === 'in_progress' || !!urlError}
           className="h-12 w-full rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white shadow-[0_16px_34px_rgba(129,140,248,0.26)] transition-all duration-200 ease-in-out hover:from-violet-500 hover:to-indigo-500"
           size="lg"
         >
-          {isAuditing ? "Scanning..." : "Start Audit"}
+          {cancellationState === 'in_progress' ? 'Waiting for cancellation...' : isAuditing ? "Scanning..." : "Start Audit"}
         </Button>
       </div>
     </div>

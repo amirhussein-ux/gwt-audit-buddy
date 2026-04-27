@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, CartesianGrid } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Download, Award, Info } from 'lucide-react';
+import { Trophy, Medal, Download } from 'lucide-react';
 import { generateLeaderboardPDF } from '@/utils/leaderboardPdfExport';
+import { InfoBubble } from '@/components/InfoBubble';
 import {
   ChartContainer,
   ChartLegend,
@@ -16,7 +17,6 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { brandColors } from '@/lib/brandColors';
-import { cn } from '@/lib/utils';
 
 interface LeaderboardEntry {
   rank: number;
@@ -50,7 +50,6 @@ interface ChartEntry {
   tier: 'elite' | 'strong' | 'developing' | 'emerging';
 }
 
-// Constants
 const LEADERBOARD_CONFIG = {
   TIER_THRESHOLDS: {
     ELITE: 85,
@@ -58,10 +57,6 @@ const LEADERBOARD_CONFIG = {
     DEVELOPING: 55,
   },
   GRID_COLS: 'grid-cols-2 md:grid-cols-4',
-  ICON_SIZES: {
-    SMALL: 'h-4 w-4',
-    MEDIUM: 'h-5 w-5',
-  },
   PERFORMANCE_GAP_THRESHOLD: 20,
   ELITE_PERCENTAGE_THRESHOLD: 0.7,
   GOOD_PERFORMANCE_THRESHOLD: 0.4,
@@ -134,30 +129,21 @@ const TIER_LEGEND = [
   { color: 'bg-orange-400', label: 'Emerging (<55%)' },
 ];
 
-const EDUCATIONAL_GUIDE = {
-  title: 'Understanding Agency Performance',
+const GUIDE_CONTENT = {
+  title: 'Understanding Agency Rankings',
+  summary: 'This report compares agencies by overall compliance score so teams can spot strong practices, recurring gaps, and coaching opportunities.',
   sections: [
     {
-      heading: 'What is this ranking?',
-      content: 'Agencies are ranked by their overall compliance score, reflecting how well their websites meet digital standards for accessibility, functionality, and user experience.',
+      title: 'How to read the tiers',
+      body: 'Elite agencies are strong models to learn from. Lower tiers show where more support or remediation is needed.',
     },
     {
-      heading: 'Performance Tiers:',
-      list: [
-        'Elite (85%+) = Industry-leading examples to learn from',
-        'Strong (70-84%) = Solid compliance with best practices',
-        'Developing (55-69%) = Good foundation, targeted improvements needed',
-        'Emerging (<55%) = Significant work required',
-      ],
-    },
-    {
-      heading: 'How to use:',
-      content: 'Learn from top performers, identify common challenges across peers, and share solutions to improve system-wide compliance.',
+      title: 'How to use the ranking',
+      body: 'Use it to identify peer examples, spread proven fixes, and focus help where the performance gap is widest.',
     },
   ],
 };
 
-// Utility functions
 const getTierFromScore = (score: number): 'elite' | 'strong' | 'developing' | 'emerging' => {
   if (score >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE) return 'elite';
   if (score >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.STRONG) return 'strong';
@@ -165,21 +151,17 @@ const getTierFromScore = (score: number): 'elite' | 'strong' | 'developing' | 'e
   return 'emerging';
 };
 
-const getAgencyTier = (score: number): { tier: 'elite' | 'strong' | 'developing' | 'emerging'; label: string; color: string } => {
+const getAgencyTier = (score: number) => {
   const tier = getTierFromScore(score);
   return { tier, ...TIER_LABELS[tier] };
 };
 
-const getScoreBadgeColor = (score: number) => {
-  const tier = getTierFromScore(score);
-  return BADGE_COLORS[tier];
-};
+const getScoreBadgeColor = (score: number) => BADGE_COLORS[getTierFromScore(score)];
 
 const getMedalIcon = (rank: number) => {
-  const iconClass = LEADERBOARD_CONFIG.ICON_SIZES.SMALL;
-  if (rank === 1) return <Trophy className={`${iconClass} text-yellow-500`} />;
-  if (rank === 2) return <Medal className={`${iconClass} text-gray-400`} />;
-  if (rank === 3) return <Medal className={`${iconClass} text-orange-600`} />;
+  if (rank === 1) return <Trophy className="h-4 w-4 text-yellow-500" />;
+  if (rank === 2) return <Medal className="h-4 w-4 text-gray-400" />;
+  if (rank === 3) return <Medal className="h-4 w-4 text-orange-600" />;
   return null;
 };
 
@@ -195,131 +177,63 @@ const calculateLeaderboardStats = (leaderboard: LeaderboardEntry[]): Leaderboard
     };
   }
 
-  const scores = leaderboard.map(e => e.overallScore);
+  const scores = leaderboard.map((entry) => entry.overallScore);
   const topScore = Math.max(...scores);
   const lowestScore = Math.min(...scores);
-  const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-  const excellentCount = scores.filter(s => s >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE).length;
+  const averageScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const excellentCount = scores.filter((score) => score >= LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE).length;
   const scoreGap = topScore - lowestScore;
 
   let performanceInsight = '';
   if (excellentCount >= leaderboard.length * LEADERBOARD_CONFIG.ELITE_PERCENTAGE_THRESHOLD) {
-    performanceInsight = `Excellent system-wide performance! ${excellentCount} of ${leaderboard.length} top agencies exceed ${LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE}%, demonstrating strong digital maturity.`;
+    performanceInsight = `Excellent system-wide performance. ${excellentCount} of ${leaderboard.length} top agencies exceed ${LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE}%.`;
   } else if (excellentCount >= leaderboard.length * LEADERBOARD_CONFIG.GOOD_PERFORMANCE_THRESHOLD) {
-    performanceInsight = `Good performance across the system. ${excellentCount} agencies are leading the way at ${LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE}%+, with others following closely.`;
+    performanceInsight = `Good performance across the system. ${excellentCount} agencies are leading the way at ${LEADERBOARD_CONFIG.TIER_THRESHOLDS.ELITE}%+.`;
   } else if (averageScore >= LEADERBOARD_CONFIG.AVERAGE_SCORE_THRESHOLD) {
-    performanceInsight = `Solid foundation established. Most agencies are performing well, but top performers show what's achievable.`;
+    performanceInsight = 'A solid foundation is in place, but top performers still show room for others to improve.';
   } else {
-    performanceInsight = `Opportunity for improvement. Performance is inconsistent across agencies, indicating shared challenges.`;
+    performanceInsight = 'Performance is inconsistent across agencies, which suggests shared barriers and coaching opportunities.';
   }
 
   let gapAnalysis = '';
   if (scoreGap < LEADERBOARD_CONFIG.SMALL_GAP_THRESHOLD) {
-    gapAnalysis = `${scoreGap.toFixed(1)}% gap — very consistent performance across all agencies`;
+    gapAnalysis = `${scoreGap.toFixed(1)}% gap: performance is very consistent across agencies.`;
   } else if (scoreGap < LEADERBOARD_CONFIG.MEDIUM_GAP_THRESHOLD) {
-    gapAnalysis = `${scoreGap.toFixed(1)}% gap — moderate variation; knowledge sharing could help`;
+    gapAnalysis = `${scoreGap.toFixed(1)}% gap: moderate variation, with clear room for knowledge sharing.`;
   } else {
-    gapAnalysis = `${scoreGap.toFixed(1)}% gap — significant opportunity; top performers have solutions to share`;
+    gapAnalysis = `${scoreGap.toFixed(1)}% gap: strong agencies likely have practices that can be transferred to lower-ranked teams.`;
   }
 
   return { topScore, averageScore, lowestScore, excellentCount, performanceInsight, gapAnalysis };
 };
 
-// Helper Components
-interface StatsMetricCardProps {
-  metric: typeof METRIC_CARDS[0];
-  stats: LeaderboardStats;
-}
-
-const StatsMetricCard = ({ metric, stats }: StatsMetricCardProps) => {
+const StatsMetricCard = ({ metric, stats }: { metric: typeof METRIC_CARDS[number]; stats: LeaderboardStats }) => {
   const value = stats[metric.key as keyof LeaderboardStats] as number;
   const displayValue = typeof value === 'number' ? value.toFixed(value % 1 === 0 ? 0 : 1) : value;
-  
+
   return (
-    <div className={`rounded-lg p-4 ${metric.bgColor} border ${metric.borderColor}`}>
-      <p className="text-xs text-slate-600 font-medium mb-1">{metric.label}</p>
+    <div className={`rounded-lg border p-4 ${metric.bgColor} ${metric.borderColor}`}>
+      <p className="mb-1 text-xs font-medium text-slate-600">{metric.label}</p>
       <p className={`text-2xl font-bold ${metric.textColor}`}>
         {displayValue}{metric.suffix}
       </p>
-      <p className={`text-xs ${metric.subColor} mt-1`}>{metric.description}</p>
+      <p className={`mt-1 text-xs ${metric.subColor}`}>{metric.description}</p>
     </div>
   );
 };
 
-interface TierLegendProps {
-  onLearnMore: () => void;
-  showGuide: boolean;
-}
-
-const TierLegend = ({ onLearnMore, showGuide }: TierLegendProps) => (
-  <div className="border-t pt-4">
-    <div className="flex items-center gap-2 mb-3">
-      <span className="text-sm font-semibold text-slate-700">Performance Tiers:</span>
-      <button
-        onClick={onLearnMore}
-        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
-      >
-        <Info className={LEADERBOARD_CONFIG.ICON_SIZES.SMALL} /> Learn more
-      </button>
-    </div>
-    <div className={`grid ${LEADERBOARD_CONFIG.GRID_COLS} gap-2`}>
-      {TIER_LEGEND.map((tier) => (
-        <div key={tier.label} className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${tier.color}`}></div>
-          <span className="text-xs text-slate-600">{tier.label}</span>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-interface EducationalGuideProps {
-  isVisible: boolean;
-}
-
-const EducationalGuide = ({ isVisible }: EducationalGuideProps) => {
-  if (!isVisible) return null;
-  
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-      <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
-        <Award className={LEADERBOARD_CONFIG.ICON_SIZES.SMALL} /> {EDUCATIONAL_GUIDE.title}
-      </h4>
-      <div className="space-y-2 text-sm text-slate-700">
-        {EDUCATIONAL_GUIDE.sections.map((section, idx) => (
-          <p key={idx}>
-            <strong>{section.heading}</strong>
-            {section.content && ` ${section.content}`}
-            {section.list && (
-              <ul className="list-disc list-inside mt-1 ml-2">
-                {section.list.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            )}
-          </p>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-interface PerformanceGapAnalysisProps {
-  stats: LeaderboardStats;
-}
-
-const PerformanceGapAnalysis = ({ stats }: PerformanceGapAnalysisProps) => {
+const PerformanceGapAnalysis = ({ stats }: { stats: LeaderboardStats }) => {
   const showRecommendation = stats.topScore - stats.lowestScore > LEADERBOARD_CONFIG.PERFORMANCE_GAP_THRESHOLD;
-  
+
   return (
-    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-      <p className="text-xs font-semibold text-indigo-900 mb-2">📊 Performance Gap Analysis</p>
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+      <p className="mb-2 text-xs font-semibold text-indigo-900">Performance Gap Analysis</p>
       <p className="text-sm text-indigo-800">{stats.gapAnalysis}</p>
-      {showRecommendation && (
-        <p className="text-sm text-indigo-800 mt-2">
-          💡 <strong>Recommendation:</strong> Facilitate peer learning sessions where top performers share best practices. Knowledge transfer could significantly improve lower-ranked agencies.
+      {showRecommendation ? (
+        <p className="mt-2 text-sm text-indigo-800">
+          Recommendation: facilitate peer learning sessions so top performers can share repeatable fixes and workflows.
         </p>
-      )}
+      ) : null}
     </div>
   );
 };
@@ -327,13 +241,13 @@ const PerformanceGapAnalysis = ({ stats }: PerformanceGapAnalysisProps) => {
 export const AgencyLeaderboard = () => {
   const { token } = useAuth();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-  const [showGuide, setShowGuide] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/dashboard/leaderboard?limit=10`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch leaderboard');
       return response.json() as Promise<LeaderboardData>;
@@ -351,8 +265,8 @@ export const AgencyLeaderboard = () => {
           </CardTitle>
           <CardDescription>Performance rankings and insights</CardDescription>
         </CardHeader>
-        <CardContent className="h-96 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <CardContent className="flex h-96 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
         </CardContent>
       </Card>
     );
@@ -360,162 +274,151 @@ export const AgencyLeaderboard = () => {
 
   const leaderboard = data?.leaderboard || [];
   const stats = calculateLeaderboardStats(leaderboard);
-
-  const chartData: ChartEntry[] = leaderboard.map((entry) => {
-    const tier = getAgencyTier(entry.overallScore).tier;
-    return {
-      name: entry.agency.name,
-      acronym: entry.agency.acronym || entry.agency.name.split(' ')[0],
-      score: entry.overallScore,
-      rank: entry.rank,
-      tier,
-    };
-  });
-
-  const getMedalIcon = (rank: number) => {
-    if (rank === 1) return <Trophy className="h-4 w-4 text-yellow-500" />;
-    if (rank === 2) return <Medal className="h-4 w-4 text-gray-400" />;
-    if (rank === 3) return <Medal className="h-4 w-4 text-orange-600" />;
-    return null;
-  };
+  const chartData: ChartEntry[] = leaderboard.map((entry) => ({
+    name: entry.agency.name,
+    acronym: entry.agency.acronym || entry.agency.name.split(' ')[0],
+    score: entry.overallScore,
+    rank: entry.rank,
+    tier: getAgencyTier(entry.overallScore).tier,
+  }));
 
   const handleDownloadPDF = async () => {
     try {
+      if (!cardRef.current) {
+        throw new Error('Agency leaderboard card is not ready for export.');
+      }
       const filename = `agency-leaderboard-${new Date().toISOString().split('T')[0]}.pdf`;
-      await generateLeaderboardPDF(document.body, filename, { leaderboard, stats });
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
+      await generateLeaderboardPDF(cardRef.current, filename, { leaderboard, stats });
+    } catch (downloadError) {
+      console.error('Error downloading PDF:', downloadError);
       alert('Failed to export PDF. Please try again.');
     }
   };
 
   return (
-    <Card className={brandColors.surfaces.dashboardCard}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-yellow-500" />
-              Top Agencies
-            </CardTitle>
-            <CardDescription>Performance rankings and insights</CardDescription>
+    <div ref={cardRef}>
+      <Card className={brandColors.surfaces.dashboardCard}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-yellow-500" />
+                Top Agencies
+              </CardTitle>
+              <CardDescription>Performance rankings and insights</CardDescription>
+            </div>
+            <div className="flex items-center gap-2" data-export-ignore="true">
+              <InfoBubble
+                title={GUIDE_CONTENT.title}
+                summary={GUIDE_CONTENT.summary}
+                sections={GUIDE_CONTENT.sections}
+              />
+              <Button onClick={handleDownloadPDF} variant="outline" size="sm" className="gap-2">
+                <Download className="h-4 w-4" />
+                Download Report
+              </Button>
+            </div>
           </div>
-          <Button
-            onClick={handleDownloadPDF}
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Download Report
-          </Button>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      <CardContent className="space-y-6">
-        {leaderboard.length > 0 ? (
-          <>
-            {/* Performance Summary */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-slate-700 leading-relaxed">
-                <span className="font-semibold">🏆 Summary:</span> {stats.performanceInsight}
-              </p>
-            </div>
-
-            {/* Key Metrics Cards */}
-            <div className={`grid ${LEADERBOARD_CONFIG.GRID_COLS} gap-3`}>
-              {METRIC_CARDS.map((metric) => (
-                <StatsMetricCard key={metric.key} metric={metric} stats={stats} />
-              ))}
-            </div>
-
-            {/* Performance Tier Legend */}
-            <TierLegend onLearnMore={() => setShowGuide(!showGuide)} showGuide={showGuide} />
-
-            {/* Educational Guide */}
-            <EducationalGuide isVisible={showGuide} />
-
-            {/* Chart Section */}
-            <div className="border-t pt-6">
-              <h3 className="text-sm font-semibold mb-4 text-slate-900">Compliance Rankings</h3>
-              <ChartContainer 
-                config={{ 
-                  score: { 
-                    label: 'Compliance Score', 
-                    color: 'var(--chart-1)' 
-                  } 
-                } satisfies ChartConfig}
-                className="w-full h-80"
-              >
-                <BarChart data={chartData} accessibilityLayer>
-                  <CartesianGrid vertical={false} />
-                  <XAxis 
-                    dataKey="acronym" 
-                    tickLine={false}
-                    tickMargin={10}
-                    axisLine={false}
-                  />
-                  <ChartTooltip 
-                    content={<ChartTooltipContent hideLabel />}
-                    formatter={(value: number) => {
-                      const tier = getAgencyTier(value);
-                      return [`${value.toFixed(1)}% — ${tier.label}`, 'Score'];
-                    }}
-                  />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  <Bar 
-                    dataKey="score" 
-                    fill="var(--color-score)" 
-                    name="Compliance Score"
-                    radius={[8, 8, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            </div>
-
-            {/* Detailed Rankings List */}
-            <div className="border-t pt-6">
-              <h3 className="text-sm font-semibold mb-4 text-slate-900">Detailed Rankings</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {leaderboard.slice(0, 10).map((entry) => {
-                  const tier = getAgencyTier(entry.overallScore);
-                  return (
-                    <div
-                      key={entry.agency._id}
-                      className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition"
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="flex items-center justify-center w-6">
-                          {getMedalIcon(entry.rank) || (
-                            <span className="font-semibold text-slate-600">{entry.rank}</span>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-sm text-slate-900">{entry.agency.name}</p>
-                          <p className="text-xs text-slate-500">{entry.agency.acronym}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <Badge className={getScoreBadgeColor(entry.overallScore)}>
-                          {entry.overallScore.toFixed(1)}%
-                        </Badge>
-                        <p className={`text-xs mt-1 font-medium ${tier.color}`}>{tier.label}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+        <CardContent className="space-y-6">
+          {leaderboard.length > 0 ? (
+            <>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p className="text-sm leading-relaxed text-slate-700">
+                  <span className="font-semibold">Summary:</span> {stats.performanceInsight}
+                </p>
               </div>
-            </div>
 
-            {/* Performance Gap Analysis */}
-            <PerformanceGapAnalysis stats={stats} />
-          </>
-        ) : (
-          <div className="h-48 flex items-center justify-center text-slate-500">
-            No leaderboard data available
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              <div className={`grid ${LEADERBOARD_CONFIG.GRID_COLS} gap-3`}>
+                {METRIC_CARDS.map((metric) => (
+                  <StatsMetricCard key={metric.key} metric={metric} stats={stats} />
+                ))}
+              </div>
+
+              <div className="border-t pt-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-700">Performance Tiers:</span>
+                </div>
+                <div className={`grid ${LEADERBOARD_CONFIG.GRID_COLS} gap-2`}>
+                  {TIER_LEGEND.map((tier) => (
+                    <div key={tier.label} className="flex items-center gap-2">
+                      <div className={`h-3 w-3 rounded-full ${tier.color}`} />
+                      <span className="text-xs text-slate-600">{tier.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Compliance Rankings</h3>
+                <ChartContainer
+                  config={{
+                    score: {
+                      label: 'Compliance Score',
+                      color: 'var(--chart-1)',
+                    },
+                  } satisfies ChartConfig}
+                  className="h-80 w-full"
+                >
+                  <BarChart data={chartData} accessibilityLayer>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="acronym" tickLine={false} tickMargin={10} axisLine={false} />
+                    <ChartTooltip
+                      content={<ChartTooltipContent hideLabel />}
+                      formatter={(value: number) => {
+                        const tier = getAgencyTier(value);
+                        return [`${value.toFixed(1)}% - ${tier.label}`, 'Score'];
+                      }}
+                    />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    <Bar dataKey="score" fill="var(--color-score)" name="Compliance Score" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </div>
+
+              <div className="border-t pt-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Detailed Rankings</h3>
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {leaderboard.slice(0, 10).map((entry) => {
+                    const tier = getAgencyTier(entry.overallScore);
+                    return (
+                      <div
+                        key={entry.agency._id}
+                        className="flex items-center justify-between rounded-lg bg-slate-50 p-3 transition hover:bg-slate-100"
+                      >
+                        <div className="flex flex-1 items-center gap-3">
+                          <div className="flex w-6 items-center justify-center">
+                            {getMedalIcon(entry.rank) || (
+                              <span className="font-semibold text-slate-600">{entry.rank}</span>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-slate-900">{entry.agency.name}</p>
+                            <p className="text-xs text-slate-500">{entry.agency.acronym}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge className={getScoreBadgeColor(entry.overallScore)}>
+                            {entry.overallScore.toFixed(1)}%
+                          </Badge>
+                          <p className={`mt-1 text-xs font-medium ${tier.color}`}>{tier.label}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <PerformanceGapAnalysis stats={stats} />
+            </>
+          ) : (
+            <div className="flex h-48 items-center justify-center text-slate-500">
+              No leaderboard data available
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };

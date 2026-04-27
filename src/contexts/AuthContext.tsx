@@ -320,6 +320,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update password');
       }
+
+      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+      setToken(null);
+      setUser(null);
     },
     [API_BASE, buildAuthHeaders, token]
   );

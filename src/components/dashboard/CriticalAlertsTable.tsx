@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, AlertCircle } from 'lucide-react';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { InfoBubble } from '@/components/InfoBubble';
 
 interface CriticalAlert {
   _id: string;
@@ -146,8 +147,22 @@ export const CriticalAlertsTable = () => {
   return (
     <Card className={cn(ALERTS_CONFIG.CARD_CLASS, brandColors.surfaces.dashboardCard)}>
       <CardHeader>
-        <CardTitle>Critical Alerts</CardTitle>
-        <CardDescription>Agencies requiring immediate attention ({data?.total || 0} total)</CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>Critical Alerts</CardTitle>
+            <CardDescription>Agencies requiring immediate attention ({data?.total || 0} total)</CardDescription>
+          </div>
+          <div data-export-ignore="true">
+            <InfoBubble
+              title="Critical Alerts"
+              summary="This card highlights agencies with the most urgent compliance gaps so teams can respond faster."
+              sections={[
+                { title: 'What appears here', body: 'Missing PST, missing Transparency Seal, and other high-severity findings are surfaced first.' },
+                { title: 'How to use it', body: 'Treat this as a triage list for immediate follow-up, especially when issues affect trust or public access.' },
+              ]}
+            />
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {(data?.alerts || []).length > 0 ? (

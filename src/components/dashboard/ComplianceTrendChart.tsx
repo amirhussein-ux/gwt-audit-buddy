@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, CartesianGrid } from 'recharts';
-import { Download, TrendingUp, Award, AlertCircle, Info } from 'lucide-react';
+import { Download, TrendingUp, AlertCircle } from 'lucide-react';
 import { generatePDF } from '@/utils/pdfExport';
+import { InfoBubble } from '@/components/InfoBubble';
 import {
   ChartContainer,
   ChartTooltip,
@@ -45,12 +46,7 @@ interface Statistics {
   insight: string;
 }
 
-// Constants
 const COMPLIANCE_TREND_CONFIG = {
-  ICON_SIZES: {
-    SMALL: 'h-4 w-4',
-    MEDIUM: 'h-5 w-5',
-  },
   CHART_COLS: 'grid-cols-2 md:grid-cols-4',
   LEGEND_COLS: 'grid-cols-3',
   TREND_THRESHOLD_SIGNIFICANT: 10,
@@ -77,20 +73,20 @@ const LEGEND_ITEMS = [
 ];
 
 const EDUCATION_CONTENT = {
-  title: 'Understanding Compliance',
+  title: 'Understanding Compliance Trend',
+  summary: 'This report tracks whether overall government website compliance is improving, flattening, or slipping across recent audits.',
   sections: [
     {
-      heading: 'What is Compliance?',
-      content: 'A measure of how well government websites meet digital standards for accessibility, functionality, and user experience.',
+      title: 'What it measures',
+      body: 'The chart averages compliance scores over time so you can quickly spot direction, not just one isolated audit result.',
     },
     {
-      heading: 'How is it scored?',
-      content: 'Compliance scores are calculated based on WCAG accessibility standards, mobile responsiveness, required government elements (PST, Transparency Seal, links), and content quality.',
+      title: 'How to use it',
+      body: 'Use rising trends to confirm that fixes are working. Use flat or declining trends to prioritize follow-up audits and support.',
     },
   ],
 };
 
-// Utility functions
 const getStatusColor = (score: number) => {
   if (score >= STATUS_COLORS_CONFIG.excellent.threshold) {
     return STATUS_COLORS_CONFIG.excellent;
@@ -108,16 +104,18 @@ const formatDateReadable = (dateString: string): string => {
 
 const getTrendInsight = (change: number, trend: 'up' | 'down' | 'stable'): string => {
   if (trend === 'up' && change > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_SIGNIFICANT) {
-    return `Strong improvement! Compliance has increased by ${change.toFixed(1)}% over this period.`;
-  } else if (trend === 'up') {
-    return `Steady progress. Compliance has improved by ${change.toFixed(1)}% over this period.`;
-  } else if (trend === 'down' && Math.abs(change) > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_SIGNIFICANT) {
-    return `Attention needed. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
-  } else if (trend === 'down') {
-    return `Minor decline. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
-  } else {
-    return `Stable performance. Compliance scores have remained consistent over this period.`;
+    return `Strong improvement. Compliance has increased by ${change.toFixed(1)}% over this period.`;
   }
+  if (trend === 'up') {
+    return `Steady progress. Compliance has improved by ${change.toFixed(1)}% over this period.`;
+  }
+  if (trend === 'down' && Math.abs(change) > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_SIGNIFICANT) {
+    return `Attention needed. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
+  }
+  if (trend === 'down') {
+    return `Minor decline. Compliance has decreased by ${Math.abs(change).toFixed(1)}% over this period.`;
+  }
+  return 'Stable performance. Compliance scores have remained consistent over this period.';
 };
 
 const calculateStatistics = (data: ChartDataPoint[]): Statistics => {
@@ -125,23 +123,19 @@ const calculateStatistics = (data: ChartDataPoint[]): Statistics => {
     return { current: 0, highest: 0, lowest: 0, average: 0, change: 0, trend: 'stable', insight: '' };
   }
 
-  const scores = data.map(d => d.average);
+  const scores = data.map((entry) => entry.average);
   const current = scores[scores.length - 1];
   const highest = Math.max(...scores);
   const lowest = Math.min(...scores);
-  const average = scores.reduce((a, b) => a + b, 0) / scores.length;
-
-  // Calculate change from first to last
+  const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
   const first = scores[0];
-  const change = ((current - first) / first) * 100;
+  const change = first === 0 ? 0 : ((current - first) / first) * 100;
   const trend = change > COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_MINOR ? 'up' : change < -COMPLIANCE_TREND_CONFIG.TREND_THRESHOLD_MINOR ? 'down' : 'stable';
-
   const insight = getTrendInsight(change, trend);
 
   return { current, highest, lowest, average, change, trend, insight };
 };
 
-// Helper Components
 interface TrendStatCardProps {
   label: string;
   value: string;
@@ -152,59 +146,31 @@ interface TrendStatCardProps {
 
 const TrendStatCard = ({ label, value, textColor, bgColor, description }: TrendStatCardProps) => (
   <div className={`rounded-lg p-4 ${bgColor}`}>
-    <p className="text-xs text-slate-600 font-medium mb-1">{label}</p>
+    <p className="mb-1 text-xs font-medium text-slate-600">{label}</p>
     <p className={`text-2xl font-bold ${textColor}`}>{value}</p>
-    <p className={`text-xs ${textColor} mt-1`}>{description}</p>
+    <p className={`mt-1 text-xs ${textColor}`}>{description}</p>
   </div>
 );
 
-interface ColorLegendItemProps {
-  color: string;
-  label: string;
-}
-
-const ColorLegendItem = ({ color, label }: ColorLegendItemProps) => (
+const ColorLegendItem = ({ color, label }: { color: string; label: string }) => (
   <div className="flex items-center gap-2">
-    <div className={`w-4 h-4 rounded ${color}`}></div>
+    <div className={`h-4 w-4 rounded ${color}`} />
     <span className="text-xs text-slate-600">{label}</span>
   </div>
 );
-
-interface EducationGuideProps {
-  isVisible: boolean;
-}
-
-const EducationGuide = ({ isVisible }: EducationGuideProps) => {
-  if (!isVisible) return null;
-
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-      <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
-        <Award className={COMPLIANCE_TREND_CONFIG.ICON_SIZES.SMALL} /> {EDUCATION_CONTENT.title}
-      </h4>
-      <div className="space-y-2 text-sm text-slate-700">
-        {EDUCATION_CONTENT.sections.map((section, idx) => (
-          <p key={idx}>
-            <strong>{section.heading}</strong> {section.content}
-          </p>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 export const ComplianceTrendChart = () => {
   const { token } = useAuth();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [selectedRange, setSelectedRange] = useState<string>('quarterly');
-  const [showGuide, setShowGuide] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['compliance-trend', selectedRange],
     queryFn: async () => {
       const days = TIME_RANGES[selectedRange].days;
       const response = await fetch(`${API_BASE}/dashboard/compliance-trend?days=${days}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch compliance trend');
       return response.json() as Promise<ComplianceScoreData>;
@@ -214,25 +180,23 @@ export const ComplianceTrendChart = () => {
 
   if (isLoading) {
     return (
-      <Card className={cn("col-span-2", brandColors.surfaces.dashboardCard)}>
+      <Card className={cn('col-span-2', brandColors.surfaces.dashboardCard)}>
         <CardHeader>
           <CardTitle>Compliance Trend</CardTitle>
           <CardDescription>Analyzing compliance performance over time</CardDescription>
         </CardHeader>
-        <CardContent className="h-64 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <CardContent className="flex h-64 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
         </CardContent>
       </Card>
     );
   }
 
-  // Flatten data for chart (average overall scores per day)
   const chartData: ChartDataPoint[] = [];
-
   if (data?.data && typeof data.data === 'object') {
     const allScores: Record<string, number[]> = {};
 
-    Object.values(data.data).forEach((agencyScores: Array<{ _id: string; overallScore: number; createdAt: string }>) => {
+    Object.values(data.data).forEach((agencyScores) => {
       agencyScores.forEach((score) => {
         const date = new Date(score.createdAt).toLocaleDateString();
         if (!allScores[date]) allScores[date] = [];
@@ -241,209 +205,199 @@ export const ComplianceTrendChart = () => {
     });
 
     Object.entries(allScores).forEach(([date, scores]) => {
-      const average = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
       chartData.push({ date, average, formatted: formatDateReadable(date) });
     });
   }
 
-  // Sort by date
   chartData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const statistics = calculateStatistics(chartData);
   const statusInfo = getStatusColor(statistics.current);
 
-  // Function to download chart as PDF
   const handleDownloadPDF = async () => {
     try {
+      if (!cardRef.current) {
+        throw new Error('Compliance trend card is not ready for export.');
+      }
       const filename = `compliance-trend-${selectedRange}-${new Date().toISOString().split('T')[0]}.pdf`;
-      await generatePDF(document.body, filename, {
+      await generatePDF(cardRef.current, filename, {
         period: TIME_RANGES[selectedRange].label,
         statistics,
         insight: statistics.insight,
       });
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
+    } catch (downloadError) {
+      console.error('Error downloading PDF:', downloadError);
       alert('Failed to export PDF. Please try again.');
     }
   };
 
   return (
-    <Card className={cn("col-span-2", brandColors.surfaces.dashboardCard)}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
-              Compliance Trend Report
-            </CardTitle>
-            <CardDescription>Performance tracking across all agencies</CardDescription>
+    <div ref={cardRef}>
+      <Card className={cn('col-span-2', brandColors.surfaces.dashboardCard)}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-blue-600" />
+                Compliance Trend Report
+              </CardTitle>
+              <CardDescription>Performance tracking across all agencies</CardDescription>
+            </div>
+            <div className="flex items-center gap-2" data-export-ignore="true">
+              <InfoBubble
+                title={EDUCATION_CONTENT.title}
+                summary={EDUCATION_CONTENT.summary}
+                sections={EDUCATION_CONTENT.sections}
+              />
+              <Button onClick={handleDownloadPDF} variant="outline" size="sm" className="gap-2">
+                <Download className="h-4 w-4" />
+                Download Report
+              </Button>
+            </div>
           </div>
-          <Button
-            onClick={handleDownloadPDF}
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Download Report
-          </Button>
-        </div>
 
-        {/* Time Range Filters */}
-        <div className="flex gap-2 mt-4 flex-wrap">
-          {Object.entries(TIME_RANGES).map(([key, range]) => (
-            <Button
-              key={key}
-              onClick={() => setSelectedRange(key)}
-              variant={selectedRange === key ? 'default' : 'outline'}
-              size="sm"
-            >
-              {range.label}
-            </Button>
-          ))}
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
-        {/* Plain Language Summary */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-slate-700 leading-relaxed">
-            <span className="font-semibold">📊 Summary:</span> {statistics.insight}
-          </p>
-        </div>
-
-        {/* KPI Cards */}
-        <div className={`grid ${COMPLIANCE_TREND_CONFIG.CHART_COLS} gap-3`}>
-          <TrendStatCard
-            label="Current Score"
-            value={`${statistics.current.toFixed(1)}%`}
-            textColor={statusInfo.text}
-            bgColor={statusInfo.bg}
-            description={statusInfo.status}
-          />
-          <TrendStatCard
-            label="Highest Score"
-            value={`${statistics.highest.toFixed(1)}%`}
-            textColor="text-emerald-700"
-            bgColor="bg-emerald-50 border border-emerald-200"
-            description="Peak performance"
-          />
-          <TrendStatCard
-            label="Lowest Score"
-            value={`${statistics.lowest.toFixed(1)}%`}
-            textColor="text-orange-700"
-            bgColor="bg-orange-50 border border-orange-200"
-            description="Minimum recorded"
-          />
-          <TrendStatCard
-            label="Progress"
-            value={`${statistics.change > 0 ? '+' : ''}${statistics.change.toFixed(1)}%`}
-            textColor={statistics.trend === 'up' ? 'text-green-700' : statistics.trend === 'down' ? 'text-red-700' : 'text-slate-700'}
-            bgColor={statistics.trend === 'up' ? 'bg-green-50 border border-green-200' : statistics.trend === 'down' ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-200'}
-            description={statistics.trend === 'up' ? '📈 Improving' : statistics.trend === 'down' ? '📉 Declining' : '➡️ Stable'}
-          />
-        </div>
-
-        {/* Color Legend */}
-        <div className="border-t pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-semibold text-slate-700">Score Legend:</span>
-            <button
-              onClick={() => setShowGuide(!showGuide)}
-              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
-            >
-              <Info className={COMPLIANCE_TREND_CONFIG.ICON_SIZES.SMALL} /> Learn more
-            </button>
-          </div>
-          <div className={`grid ${COMPLIANCE_TREND_CONFIG.LEGEND_COLS} gap-3`}>
-            {LEGEND_ITEMS.map((item) => (
-              <ColorLegendItem key={item.label} color={item.color} label={item.label} />
+          <div className="mt-4 flex flex-wrap gap-2" data-export-ignore="true">
+            {Object.entries(TIME_RANGES).map(([key, range]) => (
+              <Button
+                key={key}
+                onClick={() => setSelectedRange(key)}
+                variant={selectedRange === key ? 'default' : 'outline'}
+                size="sm"
+              >
+                {range.label}
+              </Button>
             ))}
           </div>
-        </div>
+        </CardHeader>
 
-        {/* Educational Guide (Expandable) */}
-        <EducationGuide isVisible={showGuide} />
+        <CardContent className="space-y-6">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm leading-relaxed text-slate-700">
+              <span className="font-semibold">Summary:</span> {statistics.insight}
+            </p>
+          </div>
 
-        {/* Chart Section */}
-        <div className="border-t pt-6">
-          <h3 className="text-sm font-semibold mb-4 text-slate-900">Performance Trend</h3>
-          {chartData.length > 0 ? (
-            <ChartContainer 
-              config={{ 
-                average: { 
-                  label: 'Average Compliance Score', 
-                  color: 'var(--chart-1)' 
-                } 
-              } satisfies ChartConfig}
-              className="w-full h-80"
-            >
-              <LineChart 
-                data={chartData}
-                accessibilityLayer
-                margin={{
-                  left: 12,
-                  right: 12,
-                }}
-              >
-                <CartesianGrid vertical={false} />
-                <XAxis 
-                  dataKey="formatted" 
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tickFormatter={(value) => {
-                    try {
-                      const date = new Date(value);
-                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    } catch {
-                      return value.slice(0, 10);
-                    }
-                  }}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent 
-                    hideLabel 
-                    formatter={(value: number) => [
-                      `${value.toFixed(1)}% - ${
-                        value >= 80 ? 'Excellent' : value >= 50 ? 'Moderate' : 'Needs Improvement'
-                      }`,
-                      'Compliance Score',
-                    ]}
-                  />}
-                />
-                <Line
-                  dataKey="average"
-                  type="monotone"
-                  stroke="hsl(var(--chart-1))"
-                  strokeWidth={2}
-                  dot={{ fill: 'hsl(var(--chart-1))', r: 4 }}
-                  isAnimationActive={true}
-                  name="Average Compliance Score"
-                />
-              </LineChart>  
-            </ChartContainer>
-          ) : (
-            <div className="h-80 flex items-center justify-center text-slate-500">
-              <AlertCircle className="h-5 w-5 mr-2" />
-              No trend data available yet
+          <div className={`grid ${COMPLIANCE_TREND_CONFIG.CHART_COLS} gap-3`}>
+            <TrendStatCard
+              label="Current Score"
+              value={`${statistics.current.toFixed(1)}%`}
+              textColor={statusInfo.text}
+              bgColor={statusInfo.bg}
+              description={statusInfo.status}
+            />
+            <TrendStatCard
+              label="Highest Score"
+              value={`${statistics.highest.toFixed(1)}%`}
+              textColor="text-emerald-700"
+              bgColor="border border-emerald-200 bg-emerald-50"
+              description="Peak performance"
+            />
+            <TrendStatCard
+              label="Lowest Score"
+              value={`${statistics.lowest.toFixed(1)}%`}
+              textColor="text-orange-700"
+              bgColor="border border-orange-200 bg-orange-50"
+              description="Minimum recorded"
+            />
+            <TrendStatCard
+              label="Progress"
+              value={`${statistics.change > 0 ? '+' : ''}${statistics.change.toFixed(1)}%`}
+              textColor={statistics.trend === 'up' ? 'text-green-700' : statistics.trend === 'down' ? 'text-red-700' : 'text-slate-700'}
+              bgColor={statistics.trend === 'up' ? 'border border-green-200 bg-green-50' : statistics.trend === 'down' ? 'border border-red-200 bg-red-50' : 'border border-gray-200 bg-gray-50'}
+              description={statistics.trend === 'up' ? 'Improving' : statistics.trend === 'down' ? 'Declining' : 'Stable'}
+            />
+          </div>
+
+          <div className="border-t pt-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-700">Score Legend:</span>
             </div>
-          )}
-        </div>
+            <div className={`grid ${COMPLIANCE_TREND_CONFIG.LEGEND_COLS} gap-3`}>
+              {LEGEND_ITEMS.map((item) => (
+                <ColorLegendItem key={item.label} color={item.color} label={item.label} />
+              ))}
+            </div>
+          </div>
 
-        {/* Additional Insights */}
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-          <p className="text-xs font-semibold text-indigo-900 mb-2">💡 Recommendation</p>
-          <p className="text-sm text-indigo-800">
-            {statistics.current >= 80
-              ? 'Great work! Focus on maintaining these standards and exploring advanced accessibility features.'
-              : statistics.current >= 50
-              ? 'Good progress. Prioritize fixing high-impact issues to reach the "Excellent" threshold of 80%.'
-              : 'Significant opportunity for improvement. Consider conducting a full accessibility audit and creating an improvement roadmap.'}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="border-t pt-6">
+            <h3 className="mb-4 text-sm font-semibold text-slate-900">Performance Trend</h3>
+            {chartData.length > 0 ? (
+              <ChartContainer
+                config={{
+                  average: {
+                    label: 'Average Compliance Score',
+                    color: 'var(--chart-1)',
+                  },
+                } satisfies ChartConfig}
+                className="h-80 w-full"
+              >
+                <LineChart
+                  data={chartData}
+                  accessibilityLayer
+                  margin={{
+                    left: 12,
+                    right: 12,
+                  }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="formatted"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => {
+                      try {
+                        const date = new Date(value);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      } catch {
+                        return value.slice(0, 10);
+                      }
+                    }}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        hideLabel
+                        formatter={(value: number) => [
+                          `${value.toFixed(1)}% - ${value >= 80 ? 'Excellent' : value >= 50 ? 'Moderate' : 'Needs Improvement'}`,
+                          'Compliance Score',
+                        ]}
+                      />
+                    }
+                  />
+                  <Line
+                    dataKey="average"
+                    type="monotone"
+                    stroke="hsl(var(--chart-1))"
+                    strokeWidth={2}
+                    dot={{ fill: 'hsl(var(--chart-1))', r: 4 }}
+                    isAnimationActive
+                    name="Average Compliance Score"
+                  />
+                </LineChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex h-80 items-center justify-center text-slate-500">
+                <AlertCircle className="mr-2 h-5 w-5" />
+                No trend data available yet
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <p className="mb-2 text-xs font-semibold text-indigo-900">Recommendation</p>
+            <p className="text-sm text-indigo-800">
+              {statistics.current >= 80
+                ? 'Great work! Focus on maintaining these standards and exploring advanced accessibility features.'
+                : statistics.current >= 50
+                  ? 'Good progress. Prioritize fixing high-impact issues to reach the "Excellent" threshold of 80%.'
+                  : 'Significant opportunity for improvement. Consider conducting a full accessibility audit and creating an improvement roadmap.'}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

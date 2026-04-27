@@ -5,7 +5,7 @@ const {
   generateAuditReportPdf,
   buildUiAuditSummary,
 } = require('../services/reportGenerator');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { auditLimiter, downloadLimiter } = require('../middleware/rateLimiter');
 const Agency = require('../models/Agency');
 const AuditLog = require('../models/AuditLog');
@@ -37,16 +37,23 @@ const AUDIT_ERRORS = {
 };
 
 /**
- * Check if user can access audit (view/download)
- * ALL authenticated users can access any audit
+ * Check if user can access audit (view/download/cancel)
+ * Admins can access all audits. Auditors can access only their own.
  * @param {Object} user - Authenticated user object
  * @param {Object} audit - Audit log object
  * @returns {boolean} True if user can access
  */
 const canAccessAudit = (user, audit) => {
   if (!user || !audit) return false;
-  // ALL authenticated users can access all audits (no ownership check)
-  return true;
+  if (user.role === 'admin') {
+    return true;
+  }
+
+  const ownerId = audit.auditedBy && typeof audit.auditedBy === 'object'
+    ? audit.auditedBy._id?.toString()
+    : audit.auditedBy?.toString();
+
+  return ownerId === user._id?.toString();
 };
 
 /**
@@ -58,6 +65,39 @@ const canManageArchive = (user) => {
   if (!user) return false;
   // Only admins can archive/restore
   return user.role === 'admin';
+};
+
+const isCancellationPending = (audit) => {
+  return Boolean(
+    audit?.cancellation?.requestedAt &&
+      !audit?.cancellation?.completedAt &&
+      audit?.status === 'in_progress'
+  );
+};
+
+const buildCancelledAuditPayload = (requestedBy) => {
+  const payload = {
+    status: 'cancelled',
+    auditResults: { error: 'Audit cancelled by user' },
+    'cancellation.completedAt': new Date(),
+  };
+
+  if (requestedBy) {
+    payload['cancellation.requestedBy'] = requestedBy;
+  }
+
+  return payload;
+};
+
+const normalizeAuditIds = (auditIds = []) => {
+  if (!Array.isArray(auditIds)) {
+    return { validIds: [], invalidIds: ['payload'] };
+  }
+
+  const uniqueIds = [...new Set(auditIds.filter((id) => typeof id === 'string'))];
+  const validIds = uniqueIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const invalidIds = uniqueIds.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+  return { validIds, invalidIds };
 };
 
 /**
@@ -141,7 +181,7 @@ const deriveCurrentStage = (s1, s2, s3, s4) => {
 
 /**
  * GET /audit
- * List audits: ALL users see all audits (no filtering)
+ * List audits: admins see all audits, auditors only see their own
  * Query params: ?skip=0&limit=50&status=success
  * ABUSE PROTECTION: Rate limited to prevent DOS attacks and scraping
  */
@@ -151,12 +191,16 @@ router.get('/', authenticate, auditLimiter, async (req, res) => {
     // Match non-archived audits (isArchived = false or doesn't exist)
     const query = { isArchived: { $ne: true } };
 
+    if (req.user.role !== 'admin') {
+      query.auditedBy = req.user._id;
+    }
+
     if (status) {
       query.status = status;
     }
 
     const audits = await AuditLog.find(query)
-      .populate('agency', 'name acronym domainUrl region')
+      .populate('agency', 'name acronym domainUrl region tags')
       .populate('auditedBy', 'email username role')
       .sort({ createdAt: -1 })
       .skip(parseInt(skip))
@@ -170,7 +214,9 @@ router.get('/', authenticate, auditLimiter, async (req, res) => {
       total,
       skip: parseInt(skip),
       limit: parseInt(limit),
-      note: 'Showing all available audits (excluding archived)',
+      note: req.user.role === 'admin'
+        ? 'Showing all available audits (excluding archived)'
+        : 'Showing your available audits (excluding archived)',
     });
   } catch (error) {
     console.error('[Audit List] Error:', error.message);
@@ -273,11 +319,23 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
         }
         // Update audit status to failed only if user did not cancel it.
         AuditLog.findById(savedAuditLog._id)
-          .select('status')
+          .select('status cancellation')
           .lean()
           .then((latestAudit) => {
-            if (!latestAudit || latestAudit.status === 'cancelled') {
+            if (!latestAudit) {
               return null;
+            }
+
+            if (latestAudit.status === 'cancelled') {
+              return null;
+            }
+
+            if (isCancellationPending(latestAudit)) {
+              return AuditLog.findByIdAndUpdate(
+                savedAuditLog._id,
+                buildCancelledAuditPayload(req.user._id),
+                { returnDocument: 'after' }
+              );
             }
 
             return AuditLog.findByIdAndUpdate(
@@ -384,9 +442,15 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
 
   try {
     // If the audit was cancelled before heavy work starts, stop immediately.
-    const initialAuditLog = await AuditLog.findById(auditLogId).select('status').lean();
+    const initialAuditLog = await AuditLog.findById(auditLogId).select('status cancellation').lean();
     if (!initialAuditLog || initialAuditLog.status === 'cancelled') {
       console.log('[Background] Audit already cancelled before processing. Skipping.', { auditLogId });
+      return;
+    }
+
+    if (isCancellationPending(initialAuditLog)) {
+      await AuditLog.findByIdAndUpdate(auditLogId, buildCancelledAuditPayload(initialAuditLog.cancellation?.requestedBy));
+      console.log('[Background] Cancellation request detected before processing. Audit marked cancelled.', { auditLogId });
       return;
     }
 
@@ -431,9 +495,17 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
     });
 
     // Preserve cancelled status if user cancelled while audit engine was running.
-    const latestAuditLog = await AuditLog.findById(auditLogId).select('status').lean();
+    const latestAuditLog = await AuditLog.findById(auditLogId).select('status cancellation').lean();
     if (!latestAuditLog || latestAuditLog.status === 'cancelled') {
       console.log('[Background] Audit was cancelled during processing. Preserving cancelled status.', {
+        auditLogId,
+      });
+      return;
+    }
+
+    if (isCancellationPending(latestAuditLog)) {
+      await AuditLog.findByIdAndUpdate(auditLogId, buildCancelledAuditPayload(latestAuditLog.cancellation?.requestedBy));
+      console.log('[Background] Cancellation request completed after processing. Audit marked cancelled.', {
         auditLogId,
       });
       return;
@@ -484,7 +556,7 @@ router.get('/:id', authenticate, auditLimiter, async (req, res) => {
     const { id } = req.params;
 
     const auditLog = await AuditLog.findById(id)
-      .populate('agency', 'name acronym domainUrl region')
+      .populate('agency', 'name acronym domainUrl region tags')
       .populate('auditedBy', '_id email username role')
       .lean();
 
@@ -508,7 +580,7 @@ router.get('/:id', authenticate, auditLimiter, async (req, res) => {
       hasUiReport: !!auditLog.uiReport,
       status: auditLog.status,
       owner: auditLog.auditedBy?.email,
-      accessor: req.user.email,
+      accessorId: req.user._id,
     });
 
     // Get associated compliance score
@@ -566,7 +638,7 @@ router.get('/:id/download/excel', authenticate, downloadLimiter, async (req, res
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', excelBuffer.length);
 
-    console.log('[Audit Download] Excel downloaded:', { auditLogId: id, filename, size: excelBuffer.length, user: req.user.email });
+    console.log('[Audit Download] Excel downloaded:', { auditLogId: id, filename, size: excelBuffer.length, userId: req.user._id });
     return res.send(excelBuffer);
   } catch (error) {
     console.error('[Audit Download Excel] Error:', error.message);
@@ -610,7 +682,7 @@ router.get('/:id/download/pdf', authenticate, downloadLimiter, async (req, res) 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
 
-    console.log('[Audit Download] PDF downloaded:', { auditLogId: id, filename, size: pdfBuffer.length, user: req.user.email });
+    console.log('[Audit Download] PDF downloaded:', { auditLogId: id, filename, size: pdfBuffer.length, userId: req.user._id });
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('[Audit Download PDF] Error:', error.message);
@@ -645,18 +717,38 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     }
 
     // Can only cancel if audit is still in progress
+    if (auditLog.status === 'cancelled') {
+      return res.status(200).json({
+        success: true,
+        message: 'Audit cancellation already complete',
+        audit: auditLog,
+      });
+    }
+
     if (auditLog.status !== 'in_progress') {
       return res.status(400).json({
         error: `Cannot cancel audit with status: ${auditLog.status}`,
       });
     }
 
-    // Mark audit as cancelled
+    if (isCancellationPending(auditLog)) {
+      return res.status(202).json({
+        success: true,
+        message: 'Audit cancellation already in progress',
+        audit: auditLog,
+      });
+    }
+
+    // Mark cancellation as requested; background worker will finalize it.
     const result = await AuditLog.findByIdAndUpdate(
       id,
       {
-        status: 'cancelled',
-        auditResults: { error: 'Audit cancelled by user' },
+        cancellation: {
+          requestedAt: new Date(),
+          requestedBy: req.user._id,
+          completedAt: null,
+          message: 'Audit cancellation requested by user',
+        },
       },
       { new: true }
     );
@@ -664,12 +756,12 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     console.log('[Audit Cancel] Successfully cancelled audit:', {
       auditId: id,
       url: auditLog.auditUrl,
-      cancelledBy: req.user.email,
+      cancelledByUserId: req.user._id,
     });
 
-    return res.status(200).json({
+    return res.status(202).json({
       success: true,
-      message: 'Audit cancelled successfully',
+      message: 'Audit cancellation in progress',
       audit: result,
     });
   } catch (error) {
@@ -690,6 +782,7 @@ const createNotification = async (type, auditLog, triggeredBy, metadata = {}) =>
       'audit_cancelled': 'Audit Cancelled',
       'audit_failed': 'Audit Failed',
       'audit_archived': 'Audit Archived',
+      'audit_restored': 'Audit Restored',
     };
 
     const messageMap = {
@@ -697,6 +790,7 @@ const createNotification = async (type, auditLog, triggeredBy, metadata = {}) =>
       'audit_cancelled': `Audit for ${auditLog.auditUrl} was cancelled`,
       'audit_failed': `Audit for ${auditLog.auditUrl} failed`,
       'audit_archived': `Audit for ${auditLog.auditUrl} has been archived`,
+      'audit_restored': `Audit for ${auditLog.auditUrl} has been restored`,
     };
 
     const notification = new Notification({
@@ -738,7 +832,7 @@ router.get('/archive/list', authenticate, async (req, res) => {
     const query = { isArchived: true };
 
     const audits = await AuditLog.find(query)
-      .populate('agency', 'name acronym domainUrl region')
+      .populate('agency', 'name acronym domainUrl region tags')
       .populate('auditedBy', 'email username role')
       .populate('archivedBy', 'email username')
       .sort({ archivedAt: -1 })
@@ -855,6 +949,74 @@ router.post('/:id/archive', authenticate, async (req, res) => {
 });
 
 /**
+ * POST /audit/archive/bulk
+ * Archive multiple audits (admin only)
+ */
+router.post('/archive/bulk', authenticate, async (req, res) => {
+  try {
+    if (!canManageArchive(req.user)) {
+      return res.status(403).json({
+        error: 'Access denied. Only admins can archive audits.',
+        code: 'INSUFFICIENT_ROLE',
+      });
+    }
+
+    const { auditIds = [], reason = '' } = req.body || {};
+    const { validIds, invalidIds } = normalizeAuditIds(auditIds);
+
+    if (validIds.length === 0) {
+      return res.status(400).json({
+        error: 'At least one valid audit ID is required',
+        invalidIds,
+      });
+    }
+
+    const archivedByUserId = new mongoose.Types.ObjectId(req.user._id);
+    const audits = await AuditLog.find({ _id: { $in: validIds } });
+    const failures = invalidIds.map((id) => ({ auditId: id, reason: 'Invalid audit ID' }));
+    let successCount = 0;
+
+    for (const auditLog of audits) {
+      if (auditLog.isArchived) {
+        failures.push({ auditId: auditLog._id.toString(), reason: 'Audit is already archived' });
+        continue;
+      }
+
+      if (auditLog.status === 'in_progress') {
+        failures.push({ auditId: auditLog._id.toString(), reason: 'Audit is still in progress' });
+        continue;
+      }
+
+      auditLog.isArchived = true;
+      auditLog.archivedAt = new Date();
+      auditLog.archivedBy = archivedByUserId;
+      auditLog.archiveReason = reason;
+      await auditLog.save();
+      await createNotification('audit_archived', auditLog, archivedByUserId, { archiveReason: reason });
+      successCount += 1;
+    }
+
+    const foundIds = new Set(audits.map((audit) => audit._id.toString()));
+    validIds
+      .filter((id) => !foundIds.has(id))
+      .forEach((id) => failures.push({ auditId: id, reason: AUDIT_ERRORS.AUDIT_NOT_FOUND }));
+
+    return res.status(200).json({
+      success: true,
+      message: `Archived ${successCount} audit${successCount === 1 ? '' : 's'}`,
+      successCount,
+      failureCount: failures.length,
+      failures,
+    });
+  } catch (error) {
+    console.error('[Audit Bulk Archive] Error:', error.message);
+    return res.status(500).json({
+      error: 'Failed to archive audits',
+    });
+  }
+});
+
+/**
  * POST /audit/:id/restore
  * Restore an archived audit (admin only)
  */
@@ -922,6 +1084,68 @@ router.post('/:id/restore', authenticate, async (req, res) => {
 
     return res.status(500).json({
       error: 'Failed to restore audit',
+    });
+  }
+});
+
+/**
+ * POST /audit/restore/bulk
+ * Restore multiple archived audits (admin only)
+ */
+router.post('/restore/bulk', authenticate, async (req, res) => {
+  try {
+    if (!canManageArchive(req.user)) {
+      return res.status(403).json({
+        error: 'Access denied. Only admins can restore audits.',
+        code: 'INSUFFICIENT_ROLE',
+      });
+    }
+
+    const { auditIds = [] } = req.body || {};
+    const { validIds, invalidIds } = normalizeAuditIds(auditIds);
+
+    if (validIds.length === 0) {
+      return res.status(400).json({
+        error: 'At least one valid audit ID is required',
+        invalidIds,
+      });
+    }
+
+    const audits = await AuditLog.find({ _id: { $in: validIds } });
+    const failures = invalidIds.map((id) => ({ auditId: id, reason: 'Invalid audit ID' }));
+    let successCount = 0;
+
+    for (const auditLog of audits) {
+      if (!auditLog.isArchived) {
+        failures.push({ auditId: auditLog._id.toString(), reason: 'Audit is not archived' });
+        continue;
+      }
+
+      auditLog.isArchived = false;
+      auditLog.archivedAt = null;
+      auditLog.archivedBy = null;
+      auditLog.archiveReason = '';
+      await auditLog.save();
+      await createNotification('audit_restored', auditLog, req.user._id);
+      successCount += 1;
+    }
+
+    const foundIds = new Set(audits.map((audit) => audit._id.toString()));
+    validIds
+      .filter((id) => !foundIds.has(id))
+      .forEach((id) => failures.push({ auditId: id, reason: AUDIT_ERRORS.AUDIT_NOT_FOUND }));
+
+    return res.status(200).json({
+      success: true,
+      message: `Restored ${successCount} audit${successCount === 1 ? '' : 's'}`,
+      successCount,
+      failureCount: failures.length,
+      failures,
+    });
+  } catch (error) {
+    console.error('[Audit Bulk Restore] Error:', error.message);
+    return res.status(500).json({
+      error: 'Failed to restore audits',
     });
   }
 });

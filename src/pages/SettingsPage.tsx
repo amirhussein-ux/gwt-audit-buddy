@@ -10,6 +10,7 @@ import { useAuth, type UserSettings } from '@/contexts/AuthContext';
 import { BellRing, Gauge, KeyRound, LayoutDashboard, Shield, SlidersHorizontal } from 'lucide-react';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 const createSettingsState = (settings?: UserSettings): UserSettings => ({
   auditDefaults: {
@@ -35,6 +36,7 @@ const createSettingsState = (settings?: UserSettings): UserSettings => ({
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { user, updateSettings, changePassword, refreshUser } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(() => createSettingsState(user?.settings));
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -94,8 +96,9 @@ export default function SettingsPage() {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       toast({
         title: 'Password updated',
-        description: 'Your sign-in password has been changed successfully.',
+        description: 'Your sign-in password has been changed. Please sign in again.',
       });
+      navigate('/login', { replace: true });
     } catch (error) {
       toast({
         title: 'Unable to change password',

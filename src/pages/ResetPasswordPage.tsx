@@ -121,7 +121,7 @@ export default function ResetPasswordPage() {
             <CardContent className="pt-6 space-y-4 text-center">
               <p className="text-slate-300 text-sm leading-relaxed">
                 This password reset link is incomplete or has already been used.
-                Reset links are single-use and expire after 1 hour.
+                Reset links are single-use and expire after 15 minutes.
               </p>
               <p className="text-slate-400 text-xs">
                 Request a new link from the login page.

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 
 // Security configuration constants
 const SECURITY_CONFIG = {
@@ -15,6 +16,24 @@ const SECURITY_CONFIG = {
 // Validation regex patterns
 const VALIDATION_PATTERNS = {
   EMAIL: /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+};
+
+const hashSecurityToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+const safeCompareToken = (providedToken, storedHash) => {
+  if (!providedToken || !storedHash) {
+    return false;
+  }
+
+  const providedHash = hashSecurityToken(providedToken);
+  const storedBuffer = Buffer.from(storedHash, 'hex');
+  const providedBuffer = Buffer.from(providedHash, 'hex');
+
+  if (storedBuffer.length !== providedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(storedBuffer, providedBuffer);
 };
 const userSchema = new mongoose.Schema(
   {
@@ -227,8 +246,8 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
  * @returns {string} Verification token
  */
 userSchema.methods.generateEmailVerificationToken = function () {
-  const token = require('crypto').randomBytes(32).toString('hex');
-  this.emailVerificationToken = token;
+  const token = crypto.randomBytes(32).toString('hex');
+  this.emailVerificationToken = hashSecurityToken(token);
   this.emailVerificationTokenExpires = new Date(
     Date.now() + SECURITY_CONFIG.EMAIL_VERIFICATION_EXPIRES_MS
   );
@@ -242,7 +261,8 @@ userSchema.methods.generateEmailVerificationToken = function () {
  */
 userSchema.methods.verifyEmailToken = async function (token) {
   if (
-    this.emailVerificationToken !== token ||
+    !safeCompareToken(token, this.emailVerificationToken) ||
+    !this.emailVerificationTokenExpires ||
     new Date() > this.emailVerificationTokenExpires
   ) {
     return false;
@@ -260,8 +280,8 @@ userSchema.methods.verifyEmailToken = async function (token) {
  * @returns {string} Password reset token
  */
 userSchema.methods.generatePasswordResetToken = function () {
-  const token = require('crypto').randomBytes(32).toString('hex');
-  this.passwordResetToken = token;
+  const token = crypto.randomBytes(32).toString('hex');
+  this.passwordResetToken = hashSecurityToken(token);
   this.passwordResetTokenExpires = new Date(
     Date.now() + SECURITY_CONFIG.PASSWORD_RESET_EXPIRES_MS
   );
@@ -275,7 +295,8 @@ userSchema.methods.generatePasswordResetToken = function () {
  */
 userSchema.methods.isPasswordResetTokenValid = function (token) {
   return (
-    this.passwordResetToken === token &&
+    safeCompareToken(token, this.passwordResetToken) &&
+    !!this.passwordResetTokenExpires &&
     new Date() <= this.passwordResetTokenExpires
   );
 };

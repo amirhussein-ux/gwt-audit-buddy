@@ -358,19 +358,19 @@ Get Started
 
 <div className="flex items-center gap-4">
 
-<div className="w-9 h-9">
+<div className="w-16 h-16">
 
 <img src="/pilipinsLogo.png" alt="Bagong Pilipinas"/>
 
 </div>
 
-<div className="w-7 h-7">
+<div className="w-14 h-14">
 
 <img src="/dictLogo.png" alt="DICT"/>
 
 </div>
 
-<div className="w-7 h-7">
+<div className="w-14 h-14">
 
 <img src="/nippsbLogo.png" alt="NIPPSB"/>
 

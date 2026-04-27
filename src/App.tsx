@@ -8,6 +8,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import MainLayout from "@/components/MainLayout";
 import Index from "./pages/Index.tsx";
 import LoginPage from "./pages/LoginPage.tsx";
+import ResetPasswordPage from "./pages/ResetPasswordPage.tsx";
+import VerifyEmailPage from "./pages/VerifyEmailPage.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import ResultsPage from "./pages/ResultsPage.tsx";
 import AuditLogPage from "./pages/AuditLogPage.tsx";
@@ -29,6 +31,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route
               path="/dashboard"
               element={
@@ -72,7 +76,7 @@ const App = () => (
             <Route
               path="/archive"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredRole="admin">
                   <MainLayout>
                     <ArchivePage />
                   </MainLayout>

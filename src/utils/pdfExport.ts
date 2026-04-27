@@ -62,6 +62,8 @@ export async function generatePDF(
       useCORS: PDF_CONFIG.CANVAS_OPTIONS.USE_CORS,
       allowTaint: PDF_CONFIG.CANVAS_OPTIONS.ALLOW_TAINT,
       logging: PDF_CONFIG.CANVAS_OPTIONS.LOGGING,
+      ignoreElements: (currentElement) =>
+        currentElement instanceof HTMLElement && currentElement.dataset.exportIgnore === 'true',
     });
 
     const imgData = canvas.toDataURL('image/png');

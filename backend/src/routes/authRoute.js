@@ -59,18 +59,30 @@ const PROFILE_LIMITS = {
   CONCURRENCY: { min: 1, max: 10 },
 };
 
+const PASSWORD_PATTERNS = {
+  UPPERCASE: /[A-Z]/,
+  LOWERCASE: /[a-z]/,
+  NUMBER: /\d/,
+  SPECIAL: /[^A-Za-z0-9]/,
+};
+
 /**
- * Extract token from Authorization header ONLY (for security)
- * Do NOT extract from body or query (prevents logging/caching)
+ * Extract token from Authorization header or secure session cookie.
+ * Do NOT extract from body or query (prevents logging/caching).
  * @param {Object} req - Express request object
  * @returns {string|null} Token or null if not found
  */
 const extractTokenFromHeader = (req) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7); // Remove 'Bearer ' prefix
   }
-  return authHeader.substring(7); // Remove 'Bearer ' prefix
+
+  if (req.cookies?.sessionToken) {
+    return req.cookies.sessionToken;
+  }
+
+  return null;
 };
 
 /**
@@ -121,6 +133,12 @@ const clampNumber = (value, min, max, fallback) => {
   }
   return Math.max(min, Math.min(max, numeric));
 };
+
+const normalizeEmail = (email) =>
+  typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+const normalizeUsername = (username) =>
+  typeof username === 'string' ? username.trim() : '';
 
 const sanitizeProfilePayload = (body = {}) => ({
   username: typeof body.username === 'string' ? body.username.trim() : undefined,
@@ -190,6 +208,30 @@ const validateLoginInput = (email, password) => {
   return { valid: true };
 };
 
+const validatePasswordStrength = (password) => {
+  if (typeof password !== 'string' || password.length < PROFILE_LIMITS.PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PROFILE_LIMITS.PASSWORD_MIN_LENGTH} characters`;
+  }
+
+  if (!PASSWORD_PATTERNS.UPPERCASE.test(password)) {
+    return 'Password must include at least one uppercase letter';
+  }
+
+  if (!PASSWORD_PATTERNS.LOWERCASE.test(password)) {
+    return 'Password must include at least one lowercase letter';
+  }
+
+  if (!PASSWORD_PATTERNS.NUMBER.test(password)) {
+    return 'Password must include at least one number';
+  }
+
+  if (!PASSWORD_PATTERNS.SPECIAL.test(password)) {
+    return 'Password must include at least one special character';
+  }
+
+  return null;
+};
+
 /**
  * POST /auth/register
  * Register a new user account (rate limited)
@@ -197,12 +239,21 @@ const validateLoginInput = (email, password) => {
  */
 router.post('/register', registrationLimiter, async (req, res) => {
   try {
-    const { email, password, username } = req.body;
+    const email = normalizeEmail(req.body?.email);
+    const username = normalizeUsername(req.body?.username);
+    const { password } = req.body || {};
 
     // Validate input
     if (!email || !password || !username) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         error: 'Email, password, and username are required',
+      });
+    }
+
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: passwordError,
       });
     }
 
@@ -270,7 +321,8 @@ router.post('/register', registrationLimiter, async (req, res) => {
  */
 router.post('/login', loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body?.email);
+    const { password } = req.body || {};
 
     // Validate input
     const validation = validateLoginInput(email, password);
@@ -333,7 +385,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     await user.updateLastLogin();
 
     // Create session
-    const token = sessionManager.createSession(user._id.toString(), user.username, user.role);
+    const token = await sessionManager.createSession(user._id.toString(), user.username, user.role);
 
     // Set secure httpOnly cookie (in addition to Bearer token)
     res.cookie('sessionToken', token, {
@@ -362,7 +414,8 @@ router.post('/login', loginLimiter, async (req, res) => {
  */
 router.post('/verify-email', emailVerificationLimiter, async (req, res) => {
   try {
-    const { email, token } = req.body;
+    const email = normalizeEmail(req.body?.email);
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
 
     if (!email || !token) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -407,7 +460,7 @@ router.post('/verify-email', emailVerificationLimiter, async (req, res) => {
  */
 router.post('/resend-verification', emailVerificationLimiter, async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body?.email);
 
     if (!email) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -456,12 +509,12 @@ router.post('/resend-verification', emailVerificationLimiter, async (req, res) =
  * POST /auth/logout
  * Revoke session token
  */
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   try {
     const token = extractTokenFromHeader(req);
 
     if (token) {
-      sessionManager.revokeSession(token);
+      await sessionManager.revokeSession(token);
     }
 
     // Clear session cookie
@@ -488,7 +541,7 @@ router.post('/logout', (req, res) => {
  */
 router.post('/forgot-password', passwordResetLimiter, async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body?.email);
 
     if (!email) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -531,13 +584,22 @@ router.post('/forgot-password', passwordResetLimiter, async (req, res) => {
  * POST /auth/reset-password
  * Reset password with token
  */
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', passwordResetLimiter, async (req, res) => {
   try {
-    const { email, token, password } = req.body;
+    const email = normalizeEmail(req.body?.email);
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const { password } = req.body || {};
 
     if (!email || !token || !password) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         error: 'Email, token, and password are required',
+      });
+    }
+
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: passwordError,
       });
     }
 
@@ -561,6 +623,7 @@ router.post('/reset-password', async (req, res) => {
     // Update password (will be hashed by bcrypt middleware)
     user.hashedPassword = password;
     await user.clearPasswordResetToken();
+    await sessionManager.revokeUserSessions(user._id);
 
     return res.status(HTTP_STATUS.OK).json({
       message: ERROR_MESSAGES.PASSWORD_RESET_SUCCESS,
@@ -579,7 +642,7 @@ router.post('/reset-password', async (req, res) => {
  * Check if session token is valid
  * Returns 200 with valid=true/false (never 401)
  */
-router.get('/verify', (req, res) => {
+router.get('/verify', async (req, res) => {
   try {
     const token = extractTokenFromHeader(req);
 
@@ -590,7 +653,7 @@ router.get('/verify', (req, res) => {
       });
     }
 
-    const { valid, session, reason } = sessionManager.validateSession(token);
+    const { valid, session, reason } = await sessionManager.validateSession(token);
 
     if (!valid) {
       return res.status(200).json({
@@ -599,30 +662,21 @@ router.get('/verify', (req, res) => {
       });
     }
 
-    return User.findById(session.userId)
-      .populate('agency', 'name acronym region domainUrl')
-      .then((user) => {
-        if (!user || !user.isActive) {
-          sessionManager.revokeSession(token);
-          return res.status(200).json({
-            valid: false,
-            error: ERROR_MESSAGES.USER_NOT_FOUND,
-          });
-        }
+    const user = await User.findById(session.userId).populate('agency', 'name acronym region domainUrl');
 
-        return res.status(200).json({
-          valid: true,
-          user: buildUserResponse(user, { includeAgency: true, includeLastLogin: true }),
-          expiresIn: Math.ceil((session.expiresAt - Date.now()) / 1000),
-        });
-      })
-      .catch((error) => {
-        console.error('[Auth Verify] User lookup error:', error.message);
-        return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
-          valid: false,
-          error: ERROR_MESSAGES.VERIFY_FAILED,
-        });
+    if (!user || !user.isActive) {
+      await sessionManager.revokeSession(token);
+      return res.status(200).json({
+        valid: false,
+        error: ERROR_MESSAGES.USER_NOT_FOUND,
       });
+    }
+
+    return res.status(200).json({
+      valid: true,
+      user: buildUserResponse(user, { includeAgency: true, includeLastLogin: true }),
+      expiresIn: Math.ceil((new Date(session.expiresAt).getTime() - Date.now()) / 1000),
+    });
   } catch (error) {
     console.error('[Auth Verify] Error:', error.message);
     return res.status(HTTP_STATUS.INTERNAL_ERROR).json({
@@ -646,7 +700,7 @@ router.get('/me', async (req, res) => {
       });
     }
 
-    const { valid, session } = sessionManager.validateSession(token);
+    const { valid, session } = await sessionManager.validateSession(token);
 
     if (!valid) {
       return res.status(HTTP_STATUS.UNAUTHORIZED).json({
@@ -801,9 +855,10 @@ router.post('/change-password', authenticate, async (req, res) => {
       });
     }
 
-    if (newPassword.length < PROFILE_LIMITS.PASSWORD_MIN_LENGTH) {
+    const passwordError = validatePasswordStrength(newPassword);
+    if (passwordError) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: `New password must be at least ${PROFILE_LIMITS.PASSWORD_MIN_LENGTH} characters`,
+        error: passwordError,
       });
     }
 
@@ -824,6 +879,7 @@ router.post('/change-password', authenticate, async (req, res) => {
 
     user.hashedPassword = newPassword;
     await user.save();
+    await sessionManager.revokeUserSessions(user._id);
 
     return res.status(HTTP_STATUS.OK).json({
       message: 'Password updated successfully',

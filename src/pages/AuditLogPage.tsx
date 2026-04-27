@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Clock, AlertCircle, Search } from 'lucide-react';
@@ -13,9 +13,6 @@ import { cn } from '@/lib/utils';
 const AUDIT_LOG_CONFIG = {
   API: {
     BASE: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
-    ENDPOINTS: {
-      AUDITS: '/audit',
-    },
     HEADERS: {
       AUTHORIZATION: 'Authorization',
       CONTENT_TYPE: 'Content-Type',
@@ -36,6 +33,7 @@ const AUDIT_LOG_CONFIG = {
       WEEK: 'week',
       MONTH: 'month',
     },
+    TAG_ALL: 'all',
   },
 };
 
@@ -43,7 +41,7 @@ interface AuditLogEntry {
   _id: string;
   auditUrl: string;
   status: string | { status: string };
-  agency?: string | { name: string };
+  agency?: { name?: string; tags?: string[] } | string;
   auditedBy?: { username: string; email: string; role: string };
   createdAt: string;
   pst?: { found: boolean };
@@ -58,11 +56,12 @@ export default function AuditLogPage() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+  const [tagFilter, setTagFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.TAG_ALL);
 
   const { data: logs, isLoading, error } = useQuery({
     queryKey: ['audit-logs'],
     queryFn: async () => {
-      const response = await fetch(`${AUDIT_LOG_CONFIG.API.BASE}${AUDIT_LOG_CONFIG.API.ENDPOINTS.AUDITS}`, {
+      const response = await fetch(`${AUDIT_LOG_CONFIG.API.BASE}/audit`, {
         headers: {
           [AUDIT_LOG_CONFIG.API.HEADERS.AUTHORIZATION]: `Bearer ${token}`,
           [AUDIT_LOG_CONFIG.API.HEADERS.CONTENT_TYPE]: AUDIT_LOG_CONFIG.API.HEADERS.CONTENT_TYPE_VALUE,
@@ -129,6 +128,15 @@ export default function AuditLogPage() {
     setShowCompletionModal(false);
   };
 
+  const uniqueTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    (logs || []).forEach((log: AuditLogEntry) => {
+      const agencyTags = typeof log.agency === 'object' ? log.agency?.tags || [] : [];
+      agencyTags.forEach((tag) => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [logs]);
+
   const filteredLogs = useMemo(() => {
     if (!logs) return [];
 
@@ -136,14 +144,19 @@ export default function AuditLogPage() {
 
     if (searchQuery.trim()) {
       filtered = filtered.filter((log: AuditLogEntry) => {
-        let agencyName = '';
-        if (log.agency) {
-          agencyName = typeof log.agency === 'object' ? (log.agency.name ?? '') : log.agency;
-        }
+        const agencyName =
+          typeof log.agency === 'object' ? (log.agency?.name ?? '') : (log.agency ?? '');
         return (
           log.auditUrl.toLowerCase().includes(searchQuery.toLowerCase()) ||
           agencyName.toLowerCase().includes(searchQuery.toLowerCase())
         );
+      });
+    }
+
+    if (tagFilter !== AUDIT_LOG_CONFIG.FILTERS.TAG_ALL) {
+      filtered = filtered.filter((log: AuditLogEntry) => {
+        const agencyTags = typeof log.agency === 'object' ? log.agency?.tags || [] : [];
+        return agencyTags.includes(tagFilter);
       });
     }
 
@@ -161,9 +174,11 @@ export default function AuditLogPage() {
 
         if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.TODAY) {
           return logDateOnly.getTime() === today.getTime();
-        } else if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
+        }
+        if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.WEEK) {
           return logDateOnly >= weekAgo && logDateOnly <= today;
-        } else if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
+        }
+        if (dateFilter === AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.MONTH) {
           return logDateOnly >= monthAgo && logDateOnly <= today;
         }
         return true;
@@ -171,7 +186,7 @@ export default function AuditLogPage() {
     }
 
     return filtered;
-  }, [logs, searchQuery, dateFilter]);
+  }, [logs, searchQuery, dateFilter, tagFilter]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -179,8 +194,10 @@ export default function AuditLogPage() {
       case 'success':
         return <CheckCircle className="h-5 w-5 text-emerald-600" />;
       case 'in-progress':
+      case 'in_progress':
         return <Clock className="h-5 w-5 text-sky-600" />;
       case 'failed':
+      case 'cancelled':
         return <AlertCircle className="h-5 w-5 text-rose-600" />;
       default:
         return <Clock className="h-5 w-5 text-slate-500" />;
@@ -224,7 +241,7 @@ export default function AuditLogPage() {
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Log</h1>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Review the complete history of audit runs, including ownership, timing, and current status.
+            Review the complete history of audit runs, including ownership, timing, tags, and current status.
           </p>
         </div>
       </section>
@@ -240,8 +257,8 @@ export default function AuditLogPage() {
 
         {logs && logs.length > 0 && (
           <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/65')}>
-            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center">
-              <div className="relative flex-1">
+            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:flex-wrap md:items-center">
+              <div className="relative min-w-[240px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   placeholder="Search by domain or agency..."
@@ -250,12 +267,20 @@ export default function AuditLogPage() {
                   className={filterInputClassName}
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className={filterSelectClassName}>
                   <option value="all">All Dates</option>
                   <option value="today">Today</option>
                   <option value="week">Last 7 Days</option>
                   <option value="month">Last 30 Days</option>
+                </select>
+                <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={filterSelectClassName}>
+                  <option value={AUDIT_LOG_CONFIG.FILTERS.TAG_ALL}>All Tags</option>
+                  {uniqueTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
                 </select>
               </div>
             </CardContent>
@@ -278,11 +303,12 @@ export default function AuditLogPage() {
             <CardContent className="flex flex-col items-center justify-center py-14">
               <div className="text-center">
                 <h3 className="mb-2 text-lg font-medium text-slate-900">No Results Found</h3>
-                <p className="mb-6 text-slate-600">Try adjusting your search or date filter</p>
+                <p className="mb-6 text-slate-600">Try adjusting your search, date, or tag filter</p>
                 <Button
                   onClick={() => {
                     setSearchQuery('');
                     setDateFilter('all');
+                    setTagFilter(AUDIT_LOG_CONFIG.FILTERS.TAG_ALL);
                   }}
                   className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
                 >
@@ -310,6 +336,7 @@ export default function AuditLogPage() {
                         <th className="px-5 py-4 text-left font-semibold text-slate-900">Date</th>
                         <th className="px-5 py-4 text-left font-semibold text-slate-900">Auditor</th>
                         <th className="px-5 py-4 text-left font-semibold text-slate-900">Agency</th>
+                        <th className="px-5 py-4 text-left font-semibold text-slate-900">Tags</th>
                         <th className="px-5 py-4 text-left font-semibold text-slate-900">Status</th>
                         <th className="px-5 py-4 text-left font-semibold text-slate-900">Web URL</th>
                         <th className="px-5 py-4 text-left font-semibold text-slate-900">Action</th>
@@ -317,26 +344,31 @@ export default function AuditLogPage() {
                     </thead>
                     <tbody>
                       {filteredLogs.map((log: AuditLogEntry) => {
-                        let agencyName = '-';
-                        if (log.agency) {
-                          agencyName = typeof log.agency === 'object' ? (log.agency.name ?? '-') : log.agency;
-                        }
-
-                        let auditorName = '-';
-                        if (log.auditedBy) {
-                          auditorName = log.auditedBy.username || log.auditedBy.email || '-';
-                        }
-
-                        let statusValue = 'unknown';
-                        if (log.status) {
-                          statusValue = typeof log.status === 'object' ? (log.status.status ?? 'unknown') : log.status;
-                        }
+                        const agencyName =
+                          typeof log.agency === 'object' ? (log.agency.name ?? '-') : (log.agency ?? '-');
+                        const agencyTags = typeof log.agency === 'object' ? log.agency.tags || [] : [];
+                        const auditorName = log.auditedBy?.username || log.auditedBy?.email || '-';
+                        const statusValue =
+                          typeof log.status === 'object' ? (log.status.status ?? 'unknown') : log.status || 'unknown';
 
                         return (
                           <tr key={log._id} className="border-b border-slate-100/80 transition-colors hover:bg-white/55">
                             <td className="px-5 py-4 text-slate-600">{new Date(log.createdAt).toLocaleDateString()}</td>
                             <td className="px-5 py-4 text-sm font-medium text-slate-900">{auditorName}</td>
                             <td className="px-5 py-4 font-medium text-slate-900">{agencyName}</td>
+                            <td className="px-5 py-4">
+                              <div className="flex flex-wrap gap-1.5">
+                                {agencyTags.length > 0 ? (
+                                  agencyTags.map((tag) => (
+                                    <Badge key={tag} variant="secondary" className="rounded-full bg-sky-100 text-sky-700 hover:bg-sky-100">
+                                      {tag}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-slate-400">No tags</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-5 py-4">
                               <div className="flex items-center gap-2">
                                 {getStatusIcon(statusValue)}
@@ -346,12 +378,12 @@ export default function AuditLogPage() {
                                     'rounded-full text-xs',
                                     statusValue === 'success' || statusValue === 'completed'
                                       ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
-                                      : statusValue === 'failed'
+                                      : statusValue === 'failed' || statusValue === 'cancelled'
                                         ? 'bg-rose-100 text-rose-700 hover:bg-rose-100'
                                         : 'bg-sky-100 text-sky-700 hover:bg-sky-100'
                                   )}
                                 >
-                                  {statusValue === 'success' ? 'Completed' : statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
+                                  {statusValue === 'success' ? 'Completed' : statusValue.replace('_', ' ')}
                                 </Badge>
                               </div>
                             </td>

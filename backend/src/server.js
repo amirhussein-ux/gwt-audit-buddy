@@ -10,6 +10,7 @@ const dashboardRoute = require('./routes/dashboardRoute');
 const notificationRoute = require('./routes/notificationRoute');
 const { connectDB } = require('./config/db');
 const { suspiciousRequestDetector } = require('./middleware/rateLimiter');
+const { sessionManager } = require('./middleware/auth');
 
 /**
  * Validate that required environment variables are set
@@ -26,7 +27,7 @@ const validateEnvironment = () => {
   }
 
   // Warn about optional but recommended variables
-  const recommendedVars = ['SMTP_HOST', 'SESSION_SECRET', 'JWT_SECRET'];
+  const recommendedVars = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'FRONTEND_URL', 'ALLOWED_ORIGINS'];
   const missingRecommended = recommendedVars.filter((v) => !process.env[v]);
 
   if (missingRecommended.length > 0) {
@@ -156,6 +157,7 @@ const setupGracefulShutdown = (server) => {
     console.log(`[Server] ${signal} received — shutting down gracefully...`);
 
     server.close(() => {
+      sessionManager.stopCleanupRoutine();
       console.log('[Server] HTTP server closed. All connections terminated.');
       process.exit(0);
     });
