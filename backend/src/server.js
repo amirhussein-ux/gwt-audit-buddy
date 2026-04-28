@@ -9,7 +9,7 @@ const authRoute = require('./routes/authRoute');
 const dashboardRoute = require('./routes/dashboardRoute');
 const notificationRoute = require('./routes/notificationRoute');
 const { connectDB } = require('./config/db');
-const { suspiciousRequestDetector } = require('./middleware/rateLimiter');
+const { apiLimiter, suspiciousRequestDetector } = require('./middleware/rateLimiter');
 const { sessionManager } = require('./middleware/auth');
 
 /**
@@ -119,6 +119,9 @@ const setupMiddleware = () => {
 
   // Request timeout
   app.use(requestTimeoutMiddleware);
+
+  // General API rate limiting
+  app.use('/api', apiLimiter);
 
   // Log middleware (development only)
   if (process.env.NODE_ENV === 'development') {

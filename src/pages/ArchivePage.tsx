@@ -39,7 +39,7 @@ const ARCHIVE_CONFIG = {
       WEEK: 'week',
       MONTH: 'month',
     },
-    TAG_ALL: 'all',
+    STATUS_ALL: 'all',
   },
 };
 
@@ -61,7 +61,7 @@ export default function ArchivePage() {
   const { token, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-  const [tagFilter, setTagFilter] = useState(ARCHIVE_CONFIG.FILTERS.TAG_ALL);
+  const [statusFilter, setStatusFilter] = useState(ARCHIVE_CONFIG.FILTERS.STATUS_ALL);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectionEnabled, setSelectionEnabled] = useState(false);
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([]);
@@ -72,22 +72,7 @@ export default function ArchivePage() {
     auditIds: [],
   });
 
-  if (user?.role !== 'admin') {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="container mx-auto py-8">
-          <Button variant="outline" onClick={() => navigate('/')} className="mb-4">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-          </Button>
-          <Card className="border-red-200 bg-red-50">
-            <CardContent className="pt-6">
-              <p className="text-red-800">Access denied. Only administrators can view archived audits.</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  const isAdmin = user?.role === 'admin';
 
   const { data: archiveData, isLoading, error } = useQuery({
     queryKey: ['archived-audits'],
@@ -111,13 +96,13 @@ export default function ArchivePage() {
     refetchOnReconnect: false,
   });
 
-  const uniqueTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    (archiveData?.audits || []).forEach((audit: ArchivedAudit) => {
-      (audit.agency?.tags || []).forEach((tag) => tagSet.add(tag));
-    });
-    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
-  }, [archiveData?.audits]);
+  const getStatusGroup = (status: string) => {
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus === 'success' || normalizedStatus === 'completed') return 'success';
+    if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled') return 'cancelled';
+    if (normalizedStatus === 'failed') return 'failed';
+    return normalizedStatus;
+  };
 
   const filteredArchives = useMemo(() => {
     if (!archiveData?.audits) return [];
@@ -131,8 +116,8 @@ export default function ArchivePage() {
       );
     }
 
-    if (tagFilter !== ARCHIVE_CONFIG.FILTERS.TAG_ALL) {
-      filtered = filtered.filter((audit: ArchivedAudit) => (audit.agency?.tags || []).includes(tagFilter));
+    if (statusFilter !== ARCHIVE_CONFIG.FILTERS.STATUS_ALL) {
+      filtered = filtered.filter((audit: ArchivedAudit) => getStatusGroup(audit.status) === statusFilter);
     }
 
     const now = new Date();
@@ -161,7 +146,7 @@ export default function ArchivePage() {
     }
 
     return filtered;
-  }, [archiveData?.audits, searchQuery, dateFilter, tagFilter]);
+  }, [archiveData?.audits, searchQuery, dateFilter, statusFilter]);
 
   const totalPages = Math.ceil(filteredArchives.length / ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ARCHIVE_CONFIG.PAGINATION.ITEMS_PER_PAGE;
@@ -170,7 +155,7 @@ export default function ArchivePage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, dateFilter, tagFilter]);
+  }, [searchQuery, dateFilter, statusFilter]);
 
   const toggleSelectedAudit = (auditId: string) => {
     setSelectedAuditIds((prev) =>
@@ -231,17 +216,32 @@ export default function ArchivePage() {
 
   return (
     <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
-      <section className="space-y-3">
-        <Button variant="outline" onClick={() => navigate('/')} className="rounded-2xl">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
-        </Button>
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Archive</h1>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Manage archived audit results, filter by tags, and restore records back into the active results list.
-          </p>
+      {!isAdmin ? (
+        <div className="min-h-screen bg-slate-50">
+          <div className="container mx-auto py-8">
+            <Button variant="outline" onClick={() => navigate('/')} className="mb-4">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+            </Button>
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="pt-6">
+                <p className="text-red-800">Access denied. Only administrators can view archived audits.</p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </section>
+      ) : (
+        <>
+          <section className="space-y-3">
+            <Button variant="outline" onClick={() => navigate('/')} className="rounded-2xl">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+            </Button>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Archive</h1>
+              <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                Manage archived audit results, filter by date and status, and restore records back into the active results list.
+              </p>
+            </div>
+          </section>
 
       {archiveData?.audits?.length > 0 ? (
         <MultiSelectToolbar
@@ -295,16 +295,14 @@ export default function ArchivePage() {
                 <option value={ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.MONTH}>Last Month</option>
               </select>
               <select
-                value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
                 className={filterSelectClassName}
               >
-                <option value={ARCHIVE_CONFIG.FILTERS.TAG_ALL}>All Tags</option>
-                {uniqueTags.map((tag) => (
-                  <option key={tag} value={tag}>
-                    {tag}
-                  </option>
-                ))}
+                <option value={ARCHIVE_CONFIG.FILTERS.STATUS_ALL}>All Statuses</option>
+                <option value="success">Success</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="failed">Failed</option>
               </select>
             </div>
           </CardContent>
@@ -326,13 +324,13 @@ export default function ArchivePage() {
           <CardContent className="text-center py-12">
             <Search className="mx-auto mb-4 h-12 w-12 text-slate-300" />
             <h3 className="mb-2 text-lg font-semibold text-slate-700">No Results Found</h3>
-            <p className="mb-4 text-slate-600">Try adjusting your search, date, or tag filters</p>
+            <p className="mb-4 text-slate-600">Try adjusting your search, date, or status filters</p>
             <Button
               variant="outline"
               onClick={() => {
                 setSearchQuery('');
                 setDateFilter(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-                setTagFilter(ARCHIVE_CONFIG.FILTERS.TAG_ALL);
+                setStatusFilter(ARCHIVE_CONFIG.FILTERS.STATUS_ALL);
               }}
             >
               Clear Filters
@@ -470,21 +468,23 @@ export default function ArchivePage() {
         </Card>
       ) : null}
 
-      <ConfirmationDialog
-        isOpen={restoreConfirmation.isOpen}
-        title={restoreConfirmation.auditIds.length > 1 ? 'Restore selected audits?' : 'Restore this audit?'}
-        description={
-          restoreConfirmation.auditIds.length > 1
-            ? 'These audits will be moved back to the main results list and will no longer appear in the archive.'
-            : 'This audit will be moved back to your main results list. It will no longer appear in the archive.'
-        }
-        confirmText={restoreConfirmation.auditIds.length > 1 ? 'Restore Selected' : 'Restore'}
-        cancelText="Keep Archived"
-        variant="success"
-        isLoading={isRestoring !== null || isBulkRestoring}
-        onConfirm={handleRestoreConfirm}
-        onCancel={() => setRestoreConfirmation({ isOpen: false, auditIds: [] })}
-      />
+          <ConfirmationDialog
+            isOpen={restoreConfirmation.isOpen}
+            title={restoreConfirmation.auditIds.length > 1 ? 'Restore selected audits?' : 'Restore this audit?'}
+            description={
+              restoreConfirmation.auditIds.length > 1
+                ? 'These audits will be moved back to the main results list and will no longer appear in the archive.'
+                : 'This audit will be moved back to your main results list. It will no longer appear in the archive.'
+            }
+            confirmText={restoreConfirmation.auditIds.length > 1 ? 'Restore Selected' : 'Restore'}
+            cancelText="Keep Archived"
+            variant="success"
+            isLoading={isRestoring !== null || isBulkRestoring}
+            onConfirm={handleRestoreConfirm}
+            onCancel={() => setRestoreConfirmation({ isOpen: false, auditIds: [] })}
+          />
+        </>
+      )}
     </div>
   );
 }

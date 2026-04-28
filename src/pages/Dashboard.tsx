@@ -1,13 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { MaturityRadarChart } from '@/components/dashboard/MaturityRadarChart';
-import { ComplianceTrendChart } from '@/components/dashboard/ComplianceTrendChart';
-import { AgencyLeaderboard } from '@/components/dashboard/AgencyLeaderboard';
-import { CriticalAlertsTable } from '@/components/dashboard/CriticalAlertsTable';
 import AuditInput from '@/components/AuditInput';
 import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
@@ -17,6 +13,27 @@ import { exportDashboardSectionsToPdf } from '@/utils/dashboardPdfExport';
 import { CheckCircle, Activity, BarChart3, FileText, ShieldCheck } from 'lucide-react';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+
+const MaturityRadarChart = lazy(() =>
+  import('@/components/dashboard/MaturityRadarChart').then((module) => ({
+    default: module.MaturityRadarChart,
+  }))
+);
+const ComplianceTrendChart = lazy(() =>
+  import('@/components/dashboard/ComplianceTrendChart').then((module) => ({
+    default: module.ComplianceTrendChart,
+  }))
+);
+const AgencyLeaderboard = lazy(() =>
+  import('@/components/dashboard/AgencyLeaderboard').then((module) => ({
+    default: module.AgencyLeaderboard,
+  }))
+);
+const CriticalAlertsTable = lazy(() =>
+  import('@/components/dashboard/CriticalAlertsTable').then((module) => ({
+    default: module.CriticalAlertsTable,
+  }))
+);
 
 const DASHBOARD_CONFIG = {
   STORAGE_KEYS: {
@@ -60,6 +77,29 @@ interface AuditStatusResponse {
 }
 
 type CancellationState = 'idle' | 'in_progress' | 'complete';
+
+function DashboardReportSkeleton({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/70')}>
+      <CardHeader>
+        <CardTitle className="text-base font-bold">{title}</CardTitle>
+        <CardDescription className="mt-1 text-xs leading-relaxed">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex h-64 items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-violet-600" />
+          <p className="text-sm">Loading report…</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -183,7 +223,18 @@ export default function Dashboard() {
         description: 'Performance tracking across all agencies.',
         visible: dashboardSettings?.showTrendChart !== false,
         className: 'lg:col-span-2',
-        content: <ComplianceTrendChart />,
+        content: (
+          <Suspense
+            fallback={
+              <DashboardReportSkeleton
+                title="Compliance Trend Report"
+                description="Performance tracking across all agencies."
+              />
+            }
+          >
+            <ComplianceTrendChart />
+          </Suspense>
+        ),
       },
       {
         id: 'maturity-index',
@@ -191,7 +242,18 @@ export default function Dashboard() {
         description: 'Overall compliance maturity snapshot.',
         visible: true,
         className: dashboardSettings?.showTrendChart === false ? 'lg:col-span-3' : '',
-        content: <MaturityRadarChart />,
+        content: (
+          <Suspense
+            fallback={
+              <DashboardReportSkeleton
+                title="Maturity Index"
+                description="Overall compliance maturity snapshot."
+              />
+            }
+          >
+            <MaturityRadarChart />
+          </Suspense>
+        ),
       },
       {
         id: 'agency-leaderboard',
@@ -199,7 +261,18 @@ export default function Dashboard() {
         description: 'Comparative performance rankings and insights.',
         visible: dashboardSettings?.showAgencyLeaderboard !== false,
         className: '',
-        content: <AgencyLeaderboard />,
+        content: (
+          <Suspense
+            fallback={
+              <DashboardReportSkeleton
+                title="Top Agencies"
+                description="Comparative performance rankings and insights."
+              />
+            }
+          >
+            <AgencyLeaderboard />
+          </Suspense>
+        ),
       },
       {
         id: 'critical-alerts',
@@ -207,7 +280,18 @@ export default function Dashboard() {
         description: 'Priority agencies that need attention now.',
         visible: dashboardSettings?.showCriticalAlerts !== false,
         className: '',
-        content: <CriticalAlertsTable />,
+        content: (
+          <Suspense
+            fallback={
+              <DashboardReportSkeleton
+                title="Critical Alerts"
+                description="Priority agencies that need attention now."
+              />
+            }
+          >
+            <CriticalAlertsTable />
+          </Suspense>
+        ),
       },
     ];
 

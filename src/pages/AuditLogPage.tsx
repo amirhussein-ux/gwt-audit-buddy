@@ -33,7 +33,7 @@ const AUDIT_LOG_CONFIG = {
       WEEK: 'week',
       MONTH: 'month',
     },
-    TAG_ALL: 'all',
+    STATUS_ALL: 'all',
   },
 };
 
@@ -56,7 +56,7 @@ export default function AuditLogPage() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-  const [tagFilter, setTagFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.TAG_ALL);
+  const [statusFilter, setStatusFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL);
 
   const { data: logs, isLoading, error } = useQuery({
     queryKey: ['audit-logs'],
@@ -153,10 +153,14 @@ export default function AuditLogPage() {
       });
     }
 
-    if (tagFilter !== AUDIT_LOG_CONFIG.FILTERS.TAG_ALL) {
+    if (statusFilter !== AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL) {
       filtered = filtered.filter((log: AuditLogEntry) => {
-        const agencyTags = typeof log.agency === 'object' ? log.agency?.tags || [] : [];
-        return agencyTags.includes(tagFilter);
+        const statusValue = typeof log.status === 'object' ? (log.status.status || 'unknown') : log.status || 'unknown';
+        const normalizedStatus = statusValue.toLowerCase();
+        if (statusFilter === 'success') return normalizedStatus === 'success' || normalizedStatus === 'completed';
+        if (statusFilter === 'cancelled') return normalizedStatus === 'cancelled' || normalizedStatus === 'canceled';
+        if (statusFilter === 'failed') return normalizedStatus === 'failed';
+        return false;
       });
     }
 
@@ -186,7 +190,7 @@ export default function AuditLogPage() {
     }
 
     return filtered;
-  }, [logs, searchQuery, dateFilter, tagFilter]);
+  }, [logs, searchQuery, dateFilter, statusFilter]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -274,13 +278,11 @@ export default function AuditLogPage() {
                   <option value="week">Last 7 Days</option>
                   <option value="month">Last 30 Days</option>
                 </select>
-                <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={filterSelectClassName}>
-                  <option value={AUDIT_LOG_CONFIG.FILTERS.TAG_ALL}>All Tags</option>
-                  {uniqueTags.map((tag) => (
-                    <option key={tag} value={tag}>
-                      {tag}
-                    </option>
-                  ))}
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={filterSelectClassName}>
+                  <option value={AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL}>All Statuses</option>
+                  <option value="success">Success</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="failed">Failed</option>
                 </select>
               </div>
             </CardContent>
@@ -303,12 +305,12 @@ export default function AuditLogPage() {
             <CardContent className="flex flex-col items-center justify-center py-14">
               <div className="text-center">
                 <h3 className="mb-2 text-lg font-medium text-slate-900">No Results Found</h3>
-                <p className="mb-6 text-slate-600">Try adjusting your search, date, or tag filter</p>
+                  <p className="mb-6 text-slate-600">Try adjusting your search, date, or status filter</p>
                 <Button
                   onClick={() => {
                     setSearchQuery('');
                     setDateFilter('all');
-                    setTagFilter(AUDIT_LOG_CONFIG.FILTERS.TAG_ALL);
+                    setStatusFilter(AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL);
                   }}
                   className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
                 >

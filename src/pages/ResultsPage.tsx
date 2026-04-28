@@ -39,7 +39,7 @@ const RESULTS_CONFIG = {
       WEEK: 'week',
       MONTH: 'month',
     },
-    TAG_ALL: 'all',
+    STATUS_ALL: 'all',
   },
   ROUTES: {
     AUDIT: '/audit',
@@ -69,7 +69,7 @@ export default function ResultsPage() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-  const [tagFilter, setTagFilter] = useState(RESULTS_CONFIG.FILTERS.TAG_ALL);
+  const [statusFilter, setStatusFilter] = useState(RESULTS_CONFIG.FILTERS.STATUS_ALL);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectionEnabled, setSelectionEnabled] = useState(false);
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([]);
@@ -142,13 +142,13 @@ export default function ResultsPage() {
     }
   };
 
-  const uniqueTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    (audits || []).forEach((audit: AuditResult) => {
-      (audit.agency?.tags || []).forEach((tag) => tagSet.add(tag));
-    });
-    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
-  }, [audits]);
+  const getStatusGroup = (status: string) => {
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus === 'success' || normalizedStatus === 'completed') return 'success';
+    if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled') return 'cancelled';
+    if (normalizedStatus === 'failed') return 'failed';
+    return normalizedStatus;
+  };
 
   const filteredAudits = useMemo(() => {
     if (!audits) return [];
@@ -162,8 +162,8 @@ export default function ResultsPage() {
       );
     }
 
-    if (tagFilter !== RESULTS_CONFIG.FILTERS.TAG_ALL) {
-      filtered = filtered.filter((audit: AuditResult) => (audit.agency?.tags || []).includes(tagFilter));
+    if (statusFilter !== RESULTS_CONFIG.FILTERS.STATUS_ALL) {
+      filtered = filtered.filter((audit: AuditResult) => getStatusGroup(audit.status) === statusFilter);
     }
 
     const now = new Date();
@@ -192,7 +192,7 @@ export default function ResultsPage() {
     }
 
     return filtered;
-  }, [audits, searchQuery, dateFilter, tagFilter]);
+  }, [audits, searchQuery, dateFilter, statusFilter]);
 
   const totalPages = Math.ceil(filteredAudits.length / RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * RESULTS_CONFIG.PAGINATION.ITEMS_PER_PAGE;
@@ -201,7 +201,7 @@ export default function ResultsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, dateFilter, tagFilter]);
+  }, [searchQuery, dateFilter, statusFilter]);
 
   const handleStayOnPage = () => {
     localStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
@@ -363,13 +363,11 @@ export default function ResultsPage() {
                   <option value="week">Last 7 Days</option>
                   <option value="month">Last 30 Days</option>
                 </select>
-                <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={filterSelectClassName}>
-                  <option value={RESULTS_CONFIG.FILTERS.TAG_ALL}>All Tags</option>
-                  {uniqueTags.map((tag) => (
-                    <option key={tag} value={tag}>
-                      {tag}
-                    </option>
-                  ))}
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={filterSelectClassName}>
+                  <option value={RESULTS_CONFIG.FILTERS.STATUS_ALL}>All Statuses</option>
+                  <option value="success">Success</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="failed">Failed</option>
                 </select>
               </div>
             </CardContent>
@@ -401,13 +399,13 @@ export default function ResultsPage() {
               <div className="text-center">
                 <h3 className="mb-2 text-lg font-medium text-slate-900">No Results Found</h3>
                 <p className="mb-6 text-slate-600">
-                  Try adjusting your search, date, or tag filter
+                  Try adjusting your search, date, or status filter
                 </p>
                 <Button
                   onClick={() => {
                     setSearchQuery('');
                     setDateFilter(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-                    setTagFilter(RESULTS_CONFIG.FILTERS.TAG_ALL);
+                    setStatusFilter(RESULTS_CONFIG.FILTERS.STATUS_ALL);
                   }}
                   className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
                 >

@@ -9,13 +9,27 @@ const RATE_LIMIT_CONFIG = {
   MAX_REQUESTS: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 5, // 5 attempts
 };
 
+const BLOCK_SUSPICIOUS_REQUESTS = process.env.BLOCK_SUSPICIOUS_REQUESTS === 'true';
+
 /**
  * Bot detection and user-agent validation
  * Prevents automated scraping and API abuse
  */
 const SUSPICIOUS_USER_AGENTS = [
-  'bot', 'crawler', 'spider', 'scraper', 'curl', 'wget', 'python', 'java',
-  'nodejs', 'perl', 'ruby', 'php', 'scan', 'exploit',
+  'bot',
+  'crawler',
+  'spider',
+  'scraper',
+  'curl',
+  'wget',
+  'python',
+  'java',
+  'nodejs',
+  'perl',
+  'ruby',
+  'php',
+  'scan',
+  'exploit',
 ];
 
 /**
@@ -24,36 +38,29 @@ const SUSPICIOUS_USER_AGENTS = [
  * @returns {boolean} True if agent appears suspicious
  */
 const isSuspiciousUserAgent = (userAgent) => {
-  if (!userAgent) return true; // Missing user-agent is suspicious
+  if (!userAgent) return true;
   const lower = userAgent.toLowerCase();
-  return SUSPICIOUS_USER_AGENTS.some(agent => lower.includes(agent));
+  return SUSPICIOUS_USER_AGENTS.some((agent) => lower.includes(agent));
 };
 
 /**
  * Rate limiter for login attempts (STRICT)
- * Limits: 5 requests per 15 minutes per IP
+ * Limits: 5 requests per 15 minutes per IP + email
  * Prevents brute force attacks on authentication
  */
 const loginLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: RATE_LIMIT_CONFIG.MAX_REQUESTS, // 5 attempts
+  max: RATE_LIMIT_CONFIG.MAX_REQUESTS,
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Rate limit by IP + email combination for targeted protection
-    return `${req.ip}-${req.body?.email || 'unknown'}`;
-  },
-  skip: (req) => {
-    // Skip rate limiting for requests from allowed IPs (optional admin whitelist)
-    return false;
-  },
+  keyGenerator: (req) => `${req.ip}-${req.body?.email || 'unknown'}`,
   handler: (req, res) => {
     console.warn('[RateLimit] Login attempt blocked:', { ip: req.ip, email: req.body?.email });
     return res.status(429).json({
       error: 'Too many login attempts. Please try again in a few minutes.',
       code: 'RATE_LIMIT_EXCEEDED',
-      retryAfter: req.rateLimit.resetTime,
+      retryAfter: req.rateLimit?.resetTime,
     });
   },
 });
@@ -65,21 +72,11 @@ const loginLimiter = rateLimit({
  */
 const registrationLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 5, // 5 registrations per 15 min
+  max: 5,
   message: 'Too many registration attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Rate limit by IP to prevent mass registrations
-    return req.ip;
-  },
-  skip: (req) => {
-    // Block requests with suspicious user agents
-    if (isSuspiciousUserAgent(req.get('user-agent'))) {
-      return false; // Don't skip - will be rate limited
-    }
-    return false;
-  },
+  keyGenerator: (req) => req.ip,
   handler: (req, res) => {
     console.warn('[RateLimit] Registration attempt blocked:', { ip: req.ip });
     return res.status(429).json({
@@ -96,14 +93,11 @@ const registrationLimiter = rateLimit({
  */
 const passwordResetLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 3, // 3 attempts per 15 min
+  max: 3,
   message: 'Too many password reset attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Rate limit by IP + email combination
-    return `${req.ip}-${req.body?.email || 'unknown'}`;
-  },
+  keyGenerator: (req) => `${req.ip}-${req.body?.email || 'unknown'}`,
   handler: (req, res) => {
     console.warn('[RateLimit] Password reset attempt blocked:', { ip: req.ip });
     return res.status(429).json({
@@ -120,13 +114,11 @@ const passwordResetLimiter = rateLimit({
  */
 const emailVerificationLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 5, // 5 attempts per 15 min
+  max: 5,
   message: 'Too many verification requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return `${req.ip}-${req.body?.email || 'unknown'}`;
-  },
+  keyGenerator: (req) => `${req.ip}-${req.body?.email || 'unknown'}`,
   handler: (req, res) => {
     console.warn('[RateLimit] Email verification attempt blocked:', { ip: req.ip });
     return res.status(429).json({
@@ -143,21 +135,16 @@ const emailVerificationLimiter = rateLimit({
  */
 const auditLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 30, // 30 audits per 15 min
+  max: 30,
   message: 'Too many audit requests, please slow down.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Rate limit by user ID if authenticated, otherwise by IP
-    return req.user?._id?.toString() || req.ip;
-  },
+  keyGenerator: (req) => req.user?._id?.toString() || req.ip,
   skip: (req) => {
-    // Skip if rate limiting disabled (development)
     if (process.env.RATE_LIMIT_DISABLED === 'true') {
       console.log('[RateLimit] Audit rate limiting disabled (dev mode)');
       return true;
     }
-    // Only rate limit if user is not admin (admins can run full audits)
     return req.user?.role === 'admin';
   },
   handler: (req, res) => {
@@ -177,24 +164,21 @@ const auditLimiter = rateLimit({
  */
 const aiRequestLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 10, // 10 AI requests per 15 min (expensive)
+  max: 10,
   message: 'Too many AI requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Rate limit strictly per user (authenticated required)
-    return req.user?._id?.toString() || req.ip;
-  },
+  keyGenerator: (req) => req.user?._id?.toString() || req.ip,
   skip: (req) => {
-    // Only rate limit authenticated users
     return !req.user;
   },
   handler: (req, res) => {
     console.warn('[RateLimit] AI request blocked:', { userId: req.user?._id });
     return res.status(429).json({
-      error: 'Too many AI analysis requests. AI requests are limited to prevent resource exhaustion.',
+      error:
+        'Too many AI analysis requests. AI requests are limited to prevent resource exhaustion.',
       code: 'RATE_LIMIT_AI',
-      retryAfter: req.rateLimit.resetTime,
+      retryAfter: req.rateLimit?.resetTime,
     });
   },
 });
@@ -206,13 +190,11 @@ const aiRequestLimiter = rateLimit({
  */
 const downloadLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 50, // 50 downloads per 15 min
+  max: 50,
   message: 'Too many download requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.user?._id?.toString() || req.ip;
-  },
+  keyGenerator: (req) => req.user?._id?.toString() || req.ip,
   handler: (req, res) => {
     console.warn('[RateLimit] Download request blocked:', { ip: req.ip, userId: req.user?._id });
     return res.status(429).json({
@@ -229,17 +211,20 @@ const downloadLimiter = rateLimit({
  */
 const apiLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 100, // 100 general API requests per 15 min
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    // Skip rate limiting for admin users
-    return req.user?.role === 'admin';
+  handler: (req, res) => {
+    console.warn('[RateLimit] API request blocked:', { ip: req.ip, path: req.path });
+    return res.status(429).json({
+      error: 'Too many requests. Please try again later.',
+      code: 'RATE_LIMIT_API',
+    });
   },
 });
 
 /**
- * Middleware to detect and block suspicious requests
+ * Middleware to detect and optionally block suspicious requests
  * Checks for patterns indicative of bots/scrapers
  */
 const suspiciousRequestDetector = (req, res, next) => {
@@ -250,15 +235,25 @@ const suspiciousRequestDetector = (req, res, next) => {
     multipleHeaders: (req.headers['x-forwarded-for'] || '').split(',').length > 3,
   };
 
-  // Log suspicious activity
-  if (Object.values(suspicious).some(v => v)) {
+  const hasSuspiciousSignal = Object.values(suspicious).some(Boolean);
+
+  if (hasSuspiciousSignal) {
     console.warn('[SuspiciousRequest] Detected:', {
       ip: req.ip,
       userAgent,
       path: req.path,
       suspicious,
+      blocked: BLOCK_SUSPICIOUS_REQUESTS,
     });
+
     req.suspicious = suspicious;
+
+    if (BLOCK_SUSPICIOUS_REQUESTS) {
+      return res.status(403).json({
+        error: 'Suspicious request blocked.',
+        code: 'SUSPICIOUS_REQUEST_BLOCKED',
+      });
+    }
   }
 
   next();
