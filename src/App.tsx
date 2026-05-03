@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import Splashscreen from "@/pages/Splashscreen";
 
 const MainLayout = lazy(() => import("@/components/MainLayout"));
 const Index = lazy(() => import("./pages/Index"));
@@ -34,97 +35,122 @@ function RouteFallback() {
   );
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              <Route path="/verify-email" element={<VerifyEmailPage />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <MainLayout>
-                      <Dashboard />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/results"
-                element={
-                  <ProtectedRoute>
-                    <MainLayout>
-                      <ResultsPage />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/audit-log"
-                element={
-                  <ProtectedRoute>
-                    <MainLayout>
-                      <AuditLogPage />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/audit/:id"
-                element={
-                  <ProtectedRoute>
-                    <MainLayout>
-                      <AuditDetailPage />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/archive"
-                element={
-                  <ProtectedRoute requiredRole="admin">
-                    <MainLayout>
-                      <ArchivePage />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/profile"
-                element={
-                  <ProtectedRoute>
-                    <MainLayout>
-                      <ProfilePage />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute>
-                    <MainLayout>
-                      <SettingsPage />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  // state must be inside component
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 3500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <>
+      {/* Splash FIRST */}
+      {loading && <Splashscreen />}
+
+      {/* App loads AFTER splash */}
+      {!loading && (
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Suspense fallback={<RouteFallback />}>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/reset-password" element={<ResetPasswordPage />} />
+                    <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <Dashboard />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/results"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <ResultsPage />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/audit-log"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <AuditLogPage />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/audit/:id"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <AuditDetailPage />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/archive"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <MainLayout>
+                            <ArchivePage />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/profile"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <ProfilePage />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/settings"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <SettingsPage />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </TooltipProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      )}
+    </>
+  );
+};
 
 export default App;

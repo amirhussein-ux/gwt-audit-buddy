@@ -231,17 +231,6 @@ export default function ArchivePage() {
         </div>
       ) : (
         <>
-          <section className="space-y-3">
-            <Button variant="outline" onClick={() => navigate('/')} className="rounded-2xl">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
-            </Button>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Archive</h1>
-              <p className="max-w-2xl text-sm leading-6 text-slate-600">
-                Manage archived audit results, filter by date and status, and restore records back into the active results list.
-              </p>
-            </div>
-          </section>
 
       {archiveData?.audits?.length > 0 ? (
         <MultiSelectToolbar

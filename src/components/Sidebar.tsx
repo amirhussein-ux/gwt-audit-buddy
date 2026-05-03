@@ -89,7 +89,7 @@ function SidebarBody({
       <div className="border-b border-white/40 px-4 py-5">
         <div className={cn("flex items-center", expanded ? "gap-3" : "justify-center")}>
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 via-fuchsia-50 to-sky-50 shadow-[0_12px_24px_rgba(129,140,248,0.14)]">
-            <img src="/masidlogonobg.png" alt="MASID" className="h-7 w-7 object-contain" />
+            <img src="/bluetsek.png" alt="TSEKIFY" className="h-7 w-7 object-contain" />
           </div>
           <div
             className={cn(
@@ -97,8 +97,8 @@ function SidebarBody({
               expanded ? "max-w-[160px] opacity-100" : "max-w-0 opacity-0"
             )}
           >
-            <p className="text-sm font-semibold text-slate-800">MASID</p>
-            <p className="text-xs text-slate-500">DICT Website Checker</p>
+            <p className="text-sm font-semibold text-slate-800">TSEKIFY</p>
+            <p className="text-xs text-slate-500">PPMED Website Checker</p>
           </div>
         </div>
       </div>

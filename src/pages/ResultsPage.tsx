@@ -298,17 +298,6 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <section className="space-y-3">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">
-            Web Accessibility Audit Results
-          </h1>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Browse completed audit runs, filter by timeline and tags, and open the full compliance report for each website.
-          </p>
-        </div>
-      </section>
-
       <section className="space-y-6">
         {error && (
           <Card className={cn(brandColors.surfaces.dashboardCard, 'border-red-200 bg-red-50/90')}>

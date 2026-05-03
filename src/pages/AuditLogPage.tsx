@@ -241,15 +241,6 @@ export default function AuditLogPage() {
         </div>
       )}
 
-      <section className="space-y-3">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Log</h1>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Review the complete history of audit runs, including ownership, timing, tags, and current status.
-          </p>
-        </div>
-      </section>
-
       <section className="space-y-6">
         {error && (
           <Card className={cn(brandColors.surfaces.dashboardCard, 'border-red-200 bg-red-50/90')}>

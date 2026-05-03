@@ -34,7 +34,7 @@ const LoginFormField: React.FC<LoginFormFieldProps> = ({
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="pl-10 bg-white/5 border border-white/10 text-white placeholder-white/30 rounded-xl focus:border-purple-500/60 focus:ring-purple-500/20 transition-all"
+      className="pl-10 bg-white/5 border border-white/10 text-white placeholder-white/30 rounded-xl focus:border-blue-500/60 focus:ring-blue-500/20 transition-all"
       required={required}
     />
   </div>
@@ -44,22 +44,22 @@ const HeroPanel = () => (
   <div className="hidden lg:flex lg:w-1/2 items-center justify-center relative overflow-hidden">
     <motion.div
       className="absolute inset-0 bg-cover bg-center"
-      style={{ backgroundImage: 'url(/masidLoginbg.jpg)' }}
+      style={{ backgroundImage: 'url(/checklogin.jpg)' }}
       animate={{ scale: [1, 1.04, 1] }}
       transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
     />
-    <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(7,2,15,0.88)_0%,rgba(17,6,32,0.7)_42%,rgba(10,1,24,0.9)_100%)]" />
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(192,132,252,0.16),transparent_48%)]" />
+    <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(6,13,45,0.9)_0%,rgba(17,6,32,0.68)_42%,rgba(10,1,24,0.92)_100%)]" />
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.18),transparent_48%)]" />
     <div className="relative z-10 max-w-md px-12 text-center">
       <img
-        src="/masidlogoOutline.png"
-        alt="MASID"
-        className="h-18 mx-auto mb-6 drop-shadow-[0_0_30px_rgba(168,85,247,0.5)]"
+        src="/whitetsekify.png"
+        alt="TSEKIFY"
+        className="h-24 mx-auto mb-6 drop-shadow-[0_0_30px_rgba(59,130,246,0.45)]"
       />
       <p className="text-white/60 leading-relaxed">
-        Monitoring and Automated Standards Inspection Dashboard
+        Ensuring Compliant, Accessible, and Quality Government Websites
       </p>
-      <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
     </div>
   </div>
 );
@@ -137,22 +137,21 @@ const Login = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-b from-[#0a0118] via-[#1a0b2e] to-[#0a0118]">
+    <div className="flex min-h-screen bg-gradient-to-b from-[#060d2d] via-[#1a0b2e] to-[#0a0118]">
       <HeroPanel />
 
       {/* Right panel */}
-      <div className="relative flex w-full lg:w-1/2 items-center justify-center overflow-hidden bg-gradient-to-b from-[#0a0118] via-[#1a0b2e] to-[#0a0118] p-8">
+      <div className="relative flex w-full lg:w-1/2 items-center justify-center overflow-hidden bg-[#060d2d] p-8">
         <div className="relative z-10 w-full max-w-md space-y-6">
 
           {/* Mobile header */}
           <div className="lg:hidden text-center mb-8">
             <img
-              src="/masidlogoOutline.png"
-              alt="MASID"
-              className="h-16 mx-auto mb-4 drop-shadow-[0_0_20px_rgba(168,85,247,0.5)]"
+              src="/whitetsekify.png"
+              alt="TSEKIFY"
+              className="h-16 mx-auto mb-4 drop-shadow-[0_0_20px_rgba(59,130,246,0.4)]"
             />
-            <h1 className="text-2xl font-bold text-white">MASID</h1>
-            <p className="text-white/50 text-sm mt-1">Monitoring and Automated Standards Inspection Dashboard</p>
+            <p className="text-white/50 text-sm mt-1">Ensuring Compliant, Accessible, and Quality Government Websites</p>
           </div>
 
           {/* Animated card switcher */}
@@ -166,17 +165,17 @@ const Login = () => {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="bg-[#1a0b2e] border border-white/10 rounded-2xl p-8 shadow-[0_0_40px_rgba(168,85,247,0.08)]"
+                className="bg-[#060d2d] border border-white/10 rounded-2xl p-8 shadow-[0_0_40px_rgba(59,130,246,0.12)]"
               >
                 <div className="mb-6">
                   <h2 className="text-white text-2xl font-semibold">Welcome back</h2>
-                  <p className="text-white/50 text-sm mt-1">Sign in to your audit dashboard.</p>
+                  <p className="text-white/50 text-sm mt-1">Sign in to your account</p>
                 </div>
 
                 {error && (
-                  <Alert className="mb-4 bg-red-950/50 border-red-500/30 rounded-xl">
-                    <AlertCircle className="h-4 w-4 text-red-400" />
-                    <AlertDescription className="text-red-300">{error}</AlertDescription>
+                  <Alert className="mb-4 bg-red-500/10 border-red-500/40 text-red-300 rounded-xl">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <AlertDescription className="text-white">{error}</AlertDescription>
                   </Alert>
                 )}
 
@@ -203,7 +202,7 @@ const Login = () => {
                       <button
                         type="button"
                         onClick={() => { setView('forgot'); setError(''); }}
-                        className="text-xs text-purple-400 hover:text-purple-300 hover:underline transition-colors pt-1"
+                        className="text-xs text-blue-400 hover:text-white hover:underline transition-colors pt-1"
                       >
                         Forgot password?
                       </button>
@@ -215,7 +214,7 @@ const Login = () => {
                     disabled={isLoading}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full py-3 mt-2 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 text-white font-semibold hover:shadow-[0_0_20px_rgba(168,85,247,0.5)] transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full py-3 mt-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {isLoading ? 'Signing in...' : 'Sign In'}
                   </motion.button>
@@ -231,7 +230,7 @@ const Login = () => {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="bg-[#1a0b2e] border border-white/10 rounded-2xl p-8 shadow-[0_0_40px_rgba(168,85,247,0.08)]"
+                className="bg-[#1a0b2e] border border-white/10 rounded-2xl p-8 shadow-[0_0_40px_rgba(59,130,246,0.12)]"
               >
                 {/* Back button */}
                 <button
@@ -271,7 +270,7 @@ const Login = () => {
                     disabled={forgotLoading}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 text-white font-semibold hover:shadow-[0_0_20px_rgba(168,85,247,0.5)] transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {forgotLoading ? 'Sending...' : 'Send Reset Link'}
                   </motion.button>
@@ -287,18 +286,18 @@ const Login = () => {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="bg-[#1a0b2e] border border-white/10 rounded-2xl p-8 shadow-[0_0_40px_rgba(168,85,247,0.08)] text-center"
+                className="bg-[#1a0b2e] border border-white/10 rounded-2xl p-8 shadow-[0_0_40px_rgba(59,130,246,0.12)] text-center"
               >
                 <div className="flex items-center justify-center mb-5">
-                  <div className="bg-purple-600/20 rounded-full p-4">
-                    <CheckCircle2 className="h-10 w-10 text-purple-400" />
+                  <div className="bg-blue-600/20 rounded-full p-4">
+                    <CheckCircle2 className="h-10 w-10 text-blue-400" />
                   </div>
                 </div>
                 <h2 className="text-white text-2xl font-semibold mb-2">Check your email</h2>
                 <p className="text-white/50 text-sm leading-relaxed mb-2">
                   A password reset link has been sent to
                 </p>
-                <p className="text-purple-400 text-sm font-medium mb-6 break-all">{forgotEmail}</p>
+                <p className="text-blue-400 text-sm font-medium mb-6 break-all">{forgotEmail}</p>
                 <p className="text-white/30 text-xs mb-8">
                   Didn't receive it? Check your spam folder or make sure the address is a valid DICT webmail.
                 </p>
@@ -307,7 +306,7 @@ const Login = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={goBack}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 text-white font-semibold hover:shadow-[0_0_20px_rgba(168,85,247,0.5)] transition-all duration-300"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] transition-all duration-300"
                 >
                   Back to Sign In
                 </motion.button>
@@ -329,7 +328,7 @@ const Login = () => {
           )}
 
           <p className="text-center text-xs text-white/30">
-            Powered by Department of Information and Communications Technology
+            DICT NIPPSB | PPMED 2026
           </p>
         </div>
       </div>

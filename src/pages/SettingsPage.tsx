@@ -131,14 +131,6 @@ export default function SettingsPage() {
 
   return (
     <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
-      <section className="space-y-3">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Settings</h1>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Configure how MASID behaves for your role, audit workflow, and security needs.
-          </p>
-        </div>
-      </section>
 
       <section className="space-y-6">
         <Card className={cn(brandColors.surfaces.heroCard, 'overflow-hidden')}>

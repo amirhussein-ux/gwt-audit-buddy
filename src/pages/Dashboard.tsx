@@ -617,15 +617,6 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <section className="space-y-3">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-800">Audit Dashboard</h1>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Start a new compliance run, monitor live progress, and review the latest operational signals across MASID.
-          </p>
-        </div>
-      </section>
-
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <div className="mx-auto w-full max-w-3xl xl:mx-0 xl:max-w-none">

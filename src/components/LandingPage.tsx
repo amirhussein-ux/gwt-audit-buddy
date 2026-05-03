@@ -136,11 +136,11 @@ export function FeatureCard({ icon: Icon, title, description }: FeatureCardProps
 
 return (
 
-<div className="bg-[#1a0b2e] rounded-2xl p-8 border border-white/10 hover:border-purple-500/50 transition-all duration-300 group cursor-pointer">
+<div className="bg-blue-500/10 rounded-2xl p-8 border border-white/10 hover:border-white/50 transition-all duration-300 group cursor-pointer">
 
-<div className="bg-gradient-to-br from-purple-600/20 to-purple-500/20 w-14 h-14 rounded-xl flex items-center justify-center mb-6 group-hover:from-purple-600/30 group-hover:to-purple-500/30 transition-all">
+<div className="bg-gradient-to-br from-blue-600/20 to-white-500/20 w-14 h-14 rounded-xl flex items-center justify-center mb-6 group-hover:from-blue-600/30 group-hover:to-blue-500/30 transition-all">
 
-<Icon className="w-7 h-7 text-purple-400" />
+<Icon className="w-7 h-7 text-white" />
 
 </div>
 
@@ -158,19 +158,19 @@ const LandingPage = () => {
 
 return (
 
-<div className="min-h-screen bg-gradient-to-b from-[#0a0118] via-[#1a0b2e] to-[#0a0118]">
+<div className="min-h-screen bg-gradient-to-b from-[#060d2d] via-[#1a0b2e] to-[#0a0118]">
 
 {/* Header with Glassmorphism */}
 
-<header className="sticky top-0 z-50 backdrop-blur-[30px] bg-[#13031F]/20 border-b border-white/10">
+<header className="sticky top-0 z-50 backdrop-blur-[30px] bg-[#060d2d]/20 border-b border-white/10">
 
 <div className="container mx-auto px-6 py-4 flex items-center justify-between">
 
 <div className="flex items-center gap-3">
 
-<img src="/masidlogonobg.png" alt="MASID" className="w-7 h-7" />
+<img src="/whitetsek.png" alt="TSEKIFY" className="w-5 h-5" />
 
-<span className="text-white text-xl tracking-wide font-bold">MASID</span>
+<span className="text-white text-xl tracking-wide font-bold">TSEKIFY</span>
 
 </div>
 
@@ -178,7 +178,7 @@ return (
 
 <nav className="flex items-center gap-8">
 
-<button className="px-6 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 hover:shadow-[0_0_20px_rgba(168,85,247,0.5)] transition-all duration-300">
+<button className="text-white px-6 py-2 rounded-xl bg-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.35)] transition-all duration-300">
 
 Login
 
@@ -190,7 +190,7 @@ Login
 
 </div>
 
-<div className="h-px bg-gradient-to-r from-transparent via-[#160323] to-transparent"></div>
+<div className="h-px bg-gradient-to-r from-transparent via-[#060d2d] to-transparent"></div>
 
 </header>
 
@@ -202,7 +202,7 @@ Login
 
 className="absolute inset-0 bg-cover bg-center"
 
-style={{ backgroundImage: `url(/masidherobg.jpg)` }}
+style={{ backgroundImage: `url(/checkbg.jpg)` }}
 
 animate={{ scale: [1, 1.05, 1] }}
 
@@ -210,7 +210,7 @@ transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
 
 >
 
-<div className="absolute inset-0 bg-gradient-to-b from-[#110620]/60 via-[#110620]/40 to-[#110620]"></div>
+<div className="absolute inset-0 bg-gradient-to-b from-[#060d2d]/60 via-[#110620]/40 to-[#060d2d]"></div>
 
 </motion.div>
 
@@ -218,17 +218,17 @@ transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
 
 <img
 
-src="/masidlogoOutline.png"
+src="/whitetsekify.png"
 
-alt="MASID"
+alt="TSEKIFY"
 
-className="h-24 mx-auto mb-6 drop-shadow-[0_0_30px_rgba(168,85,247,0.5)]"
+className="h-32 mx-auto mb-6 drop-shadow-[0_0_20px_rgba(59,130,246,0.35)]"
 
 />
 
 <p className="text-xl text-white/70 mb-12 max-w-2xl mx-auto">
 
-Monitoring and Automated Standards Inspection Dashboard
+Ensuring Compliant, Accessible, and Quality Government Websites
 
 </p>
 
@@ -262,7 +262,7 @@ Start Auditing
 
 {/* Features */}
 
-<section className="py-24">
+<section className="py-24 bg-[#060d2d]">
 
 <div className="max-w-7xl mx-auto px-8">
 
@@ -306,7 +306,7 @@ description={feature.description}
 
 {/* CTA Section */}
 
-<section className="relative py-24 px-6 bg-gradient-to-b from-[#1a0a2e] to-[#13031F]">
+<section className="relative py-24 px-6 bg-blue-600/30">
 
 <div className="container mx-auto max-w-4xl text-center">
 
@@ -332,7 +332,7 @@ whileHover={{ scale: 1.05 }}
 
 whileTap={{ scale: 0.95 }}
 
-className="px-12 py-4 rounded-xl bg-gradient-to-r from-purple-600 via-purple-500 to-purple-600 hover:shadow-[0_0_50px_rgba(168,85,247,0.6)] transition-all duration-300 text-white text-lg"
+className="px-12 py-4 rounded-xl bg-blue-600 hover:shadow-[0_0_20px_rgba(59,130,246,0.35)] transition-all duration-300 text-white text-lg"
 
 >
 
@@ -348,9 +348,9 @@ Get Started
 
 {/* Footer */}
 
-<footer className="relative bg-[#0a0314] border-t border-purple-900/30">
+<footer className="relative bg-[#060d2d] border-t border-blue-900/30">
 
-<div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
+<div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent"></div>
 
 <div className="container mx-auto px-6 py-8">
 
