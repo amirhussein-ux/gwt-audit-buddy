@@ -25,13 +25,13 @@ export const brandColors = {
       "flex h-screen flex-col overflow-hidden border-r transition-[width] duration-200 ease-in-out",
     active: {
       bg: "bg-gradient-to-r from-violet-100 via-fuchsia-50 to-sky-50",
-      text: "text-violet-700",
-      icon: "text-indigo-600",
+      text: "text-blue-700",
+      icon: "text-blue-600",
       shadow: "shadow-[0_10px_24px_rgba(129,140,248,0.14)]",
     },
     inactive: {
       text: "text-slate-500",
-      icon: "text-slate-500",
+      icon: "text-blue-500/70",
     },
     hover: {
       bg: "hover:bg-white/70",

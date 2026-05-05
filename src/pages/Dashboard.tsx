@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import AuditInput from '@/components/AuditInput';
 import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
+import AuditCompletionModal from '@/components/AuditCompletionModal';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { InfoBubble } from '@/components/InfoBubble';
 import { MultiSelectToolbar } from '@/components/MultiSelectToolbar';
 import { exportDashboardSectionsToPdf } from '@/utils/dashboardPdfExport';
-import { CheckCircle, Activity, BarChart3, FileText, ShieldCheck } from 'lucide-react';
+import { Activity, BarChart3, FileText, ShieldCheck } from 'lucide-react';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
 
@@ -591,126 +592,104 @@ export default function Dashboard() {
 
   return (
     <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
-      {showCompletionModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <Card className={cn('mx-4 w-full max-w-md border-green-200 bg-white shadow-lg', brandColors.surfaces.primaryCard)}>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-                <CardTitle className="text-slate-900">Audit Complete!</CardTitle>
+      <AuditCompletionModal
+        isOpen={showCompletionModal}
+        onViewResults={handleViewResults}
+        onStayOnPage={handleStayOnPage}
+      />
+
+      <section>
+        <div className="w-full">
+          <Card className={cn(brandColors.surfaces.heroCard, 'relative overflow-hidden')}>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.30),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.24),transparent_30%)]" />
+            <CardHeader className="relative space-y-3 pb-4">
+              <div className="inline-flex w-fit items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-violet-700 shadow-sm">
+                Primary action
+              </div>
+              <div className="space-y-2">
+                <CardTitle className="text-2xl text-slate-900">Run New Audit</CardTitle>
+                <CardDescription className="max-w-2xl text-sm leading-6 text-slate-600">
+                  Launch a fresh compliance assessment for a Philippine government website and keep the scan status in view as the audit progresses.
+                </CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-slate-700">
-                Your audit has been successfully completed and the results are ready to view.
-              </p>
-              <div className="flex gap-3 pt-4">
-                <Button onClick={handleViewResults} className="flex-1 bg-green-600 hover:bg-green-700">
-                  View Results
-                </Button>
-                <Button onClick={handleStayOnPage} variant="outline" className="flex-1">
-                  Stay on Page
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+            <CardContent className="relative space-y-5">
+              {auditError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-800">
+                    <strong>Error:</strong> {auditError}
+                  </p>
+                </div>
+              ) : null}
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <div className="mx-auto w-full max-w-3xl xl:mx-0 xl:max-w-none">
-            <Card className={cn(brandColors.surfaces.heroCard, 'relative overflow-hidden')}>
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.30),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.24),transparent_30%)]" />
-              <CardHeader className="relative space-y-3 pb-4">
-                <div className="inline-flex w-fit items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-violet-700 shadow-sm">
-                  Primary action
-                </div>
-                <div className="space-y-2">
-                  <CardTitle className="text-2xl text-slate-900">Run New Audit</CardTitle>
-                  <CardDescription className="max-w-2xl text-sm leading-6 text-slate-600">
-                    Launch a fresh compliance assessment for a Philippine government website and keep the scan status in view as the audit progresses.
-                  </CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent className="relative space-y-5">
-                {auditError ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
-                    <p className="text-sm text-red-800">
-                      <strong>Error:</strong> {auditError}
+              {!isRunning || cancellationState !== 'idle' ? (
+                <AuditInput
+                  onStartAudit={handleAuditStart}
+                  isAuditing={isRunning}
+                  cancellationState={cancellationState}
+                  initialOptions={auditDefaults}
+                />
+              ) : (
+                <div className="space-y-4 rounded-[26px] border border-white/70 bg-white/75 p-5 shadow-[0_16px_36px_rgba(148,163,184,0.10)] backdrop-blur-md">
+                  <AuditProgress steps={steps} isVisible={isRunning} />
+                  <div className="flex flex-col gap-3 border-t border-slate-200/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-600">
+                      Audit in progress. You will receive a notification when the report is ready.
                     </p>
+                    <Button onClick={() => setCancelConfirmationOpen(true)} variant="destructive" className="whitespace-nowrap">
+                      Cancel Audit
+                    </Button>
                   </div>
-                ) : null}
-
-                {!isRunning || cancellationState !== 'idle' ? (
-                  <AuditInput
-                    onStartAudit={handleAuditStart}
-                    isAuditing={isRunning}
-                    cancellationState={cancellationState}
-                    initialOptions={auditDefaults}
-                  />
-                ) : (
-                  <div className="space-y-4 rounded-[26px] border border-white/70 bg-white/75 p-5 shadow-[0_16px_36px_rgba(148,163,184,0.10)] backdrop-blur-md">
-                    <AuditProgress steps={steps} isVisible={isRunning} />
-                    <div className="flex flex-col gap-3 border-t border-slate-200/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-sm text-slate-600">
-                        Audit in progress. You will receive a notification when the report is ready.
-                      </p>
-                      <Button onClick={() => setCancelConfirmationOpen(true)} variant="destructive" className="whitespace-nowrap">
-                        Cancel Audit
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        <div className="xl:col-span-1">
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/68')}>
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-lg text-slate-900">System Overview</CardTitle>
-                  <CardDescription className="text-sm text-slate-500">
-                    Quick operational metrics for the current audit workspace.
-                  </CardDescription>
                 </div>
-                <div data-export-ignore="true">
-                  <InfoBubble
-                    title="System Overview"
-                    summary="These summary cards give you a fast operational read of the current workspace."
-                    sections={[
-                      { title: 'How to use it', body: 'Use these values for quick orientation, then move into the detailed report cards below for trend and issue context.' },
-                    ]}
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
-                {systemOverviewStats.map((stat) => (
-                  <div key={stat.label} className={cn(brandColors.surfaces.statCard, 'p-4', stat.background)}>
-                    <div className="mb-3 flex items-center justify-between">
-                      <stat.icon className={cn('h-4 w-4', stat.accent)} />
-                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">Live</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500">{stat.label}</p>
-                        <p className={cn('mt-2 text-2xl font-semibold tracking-tight', stat.accent)}>{stat.value}</p>
-                      </div>
-                      <div data-export-ignore="true">
-                        <InfoBubble title={stat.label} summary={stat.summary} className="h-7 px-2.5" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      <section className="space-y-8">
+        <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/68')}>
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-lg text-slate-900">System Overview</CardTitle>
+                <CardDescription className="text-sm text-slate-500">
+                  Quick operational metrics for the current audit workspace.
+                </CardDescription>
+              </div>
+              <div data-export-ignore="true">
+                <InfoBubble
+                  title="System Overview"
+                  summary="These summary cards give you a fast operational read of the current workspace."
+                  sections={[
+                    { title: 'How to use it', body: 'Use these values for quick orientation, then move into the detailed report cards below for trend and issue context.' },
+                  ]}
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+              {systemOverviewStats.map((stat) => (
+                <div key={stat.label} className={cn(brandColors.surfaces.statCard, 'p-4', stat.background)}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <stat.icon className={cn('h-4 w-4', stat.accent)} />
+                    <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">Live</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-medium text-slate-500">{stat.label}</p>
+                      <p className={cn('mt-2 text-2xl font-semibold tracking-tight', stat.accent)}>{stat.value}</p>
+                    </div>
+                    <div data-export-ignore="true">
+                      <InfoBubble title={stat.label} summary={stat.summary} className="h-7 px-2.5" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       <section className="space-y-4">

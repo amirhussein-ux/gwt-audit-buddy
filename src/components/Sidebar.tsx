@@ -6,8 +6,6 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
-  Settings,
-  UserCircle2,
 } from "lucide-react";
 
 import ConfirmationDialog from "@/components/ConfirmationDialog";
@@ -38,14 +36,6 @@ const SIDEBAR_SECTIONS: SidebarNavSection[] = [
       { id: "results", label: "Results", path: "/results", icon: FileText },
       { id: "archive", label: "Archive", path: "/archive", icon: Archive },
       { id: "audit-log", label: "Audit Log", path: "/audit-log", icon: Clock },
-    ],
-  },
-  {
-    id: "account",
-    label: "Account",
-    items: [
-      { id: "profile", label: "Profile", path: "/profile", icon: UserCircle2 },
-      { id: "settings", label: "Settings", path: "/settings", icon: Settings },
     ],
   },
 ];

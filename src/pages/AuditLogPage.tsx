@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import AuditCompletionModal from '@/components/AuditCompletionModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Clock, AlertCircle, Search } from 'lucide-react';
+import { Clock, AlertCircle, Search } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
@@ -215,31 +216,11 @@ export default function AuditLogPage() {
 
   return (
     <div className={cn('min-h-full space-y-8 py-8', brandColors.appShell.contentPadding)}>
-      {showCompletionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Card className={cn('mx-4 w-full max-w-md border-green-200 bg-white shadow-lg', brandColors.surfaces.primaryCard)}>
-            <CardHeader className="border-b border-green-200">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-                <CardTitle className="text-green-600">Audit Complete!</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4 py-6">
-              <p className="text-slate-700">
-                Your audit has been successfully completed and the results are ready to view.
-              </p>
-              <div className="flex gap-3 pt-4">
-                <Button onClick={handleViewResults} className="flex-1 bg-green-600 hover:bg-green-700">
-                  View Results
-                </Button>
-                <Button onClick={handleStayOnPage} variant="outline" className="flex-1">
-                  Stay on Page
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <AuditCompletionModal
+        isOpen={showCompletionModal}
+        onViewResults={handleViewResults}
+        onStayOnPage={handleStayOnPage}
+      />
 
       <section className="space-y-6">
         {error && (

@@ -37,6 +37,7 @@ const NotificationCenter = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [markAllConfirmationOpen, setMarkAllConfirmationOpen] = useState(false);
   const [isMarkingAll, setIsMarkingAll] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const NOTIFICATION_CONFIG = {
     API: {
@@ -148,8 +149,10 @@ const NotificationCenter = () => {
       setIsMarkingAll(false);
     }
   };
-
-  const recentNotifications = notificationsData?.notifications?.slice(0, 5) || [];
+  
+  const displayedNotifications = showAll
+    ? notificationsData?.notifications || []
+    : notificationsData?.notifications?.slice(0, 5) || [];
 
   if (user?.settings?.notifications?.inAppEnabled === false) {
     return null;
@@ -187,6 +190,18 @@ const NotificationCenter = () => {
             <div className="bg-transparent p-0">
               {/* Header */}
               <div className="flex items-center justify-between border-b border-slate-200/70 bg-[linear-gradient(135deg,rgba(245,243,255,0.86),rgba(239,246,255,0.72))] p-5">
+                {showAll && (
+                  <div className="px-5 py-2 border-b border-slate-100">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-blue-600"
+                      onClick={() => setShowAll(false)}
+                    >
+                      Show less
+                    </Button>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-blue-100 rounded-lg">
                     <Bell className="h-4 w-4 text-blue-600" />
@@ -212,7 +227,7 @@ const NotificationCenter = () => {
 
               {/* Notification List */}
               <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
-                {recentNotifications.length === 0 ? (
+                {displayedNotifications.length === 0 ? (
                   <div className="p-8 text-center">
                     <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-100 mb-3">
                       <Inbox className="h-7 w-7 text-slate-400" />
@@ -223,7 +238,7 @@ const NotificationCenter = () => {
                     </p>
                   </div>
                 ) : (
-                  recentNotifications.map((notification: Notification) => (
+                  displayedNotifications.map((notification: Notification) => (
                     <div
                       key={notification._id}
                       className={`p-4 hover:bg-slate-50 transition-all duration-150 cursor-pointer border-l-4 ${
@@ -268,19 +283,15 @@ const NotificationCenter = () => {
               </div>
 
               {/* Footer */}
-              {recentNotifications.length > 0 && (
+              {displayedNotifications.length > 0 && (
                 <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 text-center">
                   <Button
                     variant="ghost"
                     size="sm"
                     className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-medium w-full"
-                    onClick={() => {
-                      // Navigate to notification center (can be created later)
-                      console.log('View all notifications');
-                      setShowDropdown(false);
-                    }}
+                    onClick={() => setShowAll(true)}
                   >
-                    View all notifications →
+                    {!showAll ? "View all notifications →" : "Showing all notifications"}
                   </Button>
                 </div>
               )}
