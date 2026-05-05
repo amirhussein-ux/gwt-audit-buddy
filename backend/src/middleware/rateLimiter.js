@@ -214,6 +214,23 @@ const apiLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  // Exempt common authenticated polling GET endpoints so they don't trigger
+  // the global /api limiter before route-level limiters run.
+  skip: (req) => {
+    const p = req.path || '';
+
+    // Always allow cancel requests (we handle resource protection elsewhere)
+    if (/^\/audit\/[^/]+\/cancel$/i.test(p)) return true;
+
+    // Allow audit polling: GET /api/audit/:id
+    if (req.method === 'GET' && /^\/audit\/[^/]+$/i.test(p)) return true;
+
+    // Allow dashboard/notifications polling reads (authenticated, mostly Mongo reads)
+    if (req.method === 'GET' && /^\/dashboard\//i.test(p)) return true;
+    if (req.method === 'GET' && /^\/notifications\//i.test(p)) return true;
+
+    return false;
+  },
   handler: (req, res) => {
     console.warn('[RateLimit] API request blocked:', { ip: req.ip, path: req.path });
     return res.status(429).json({
