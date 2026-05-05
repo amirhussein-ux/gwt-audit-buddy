@@ -41,6 +41,9 @@ const DASHBOARD_CONFIG = {
     AUDIT_STEPS: 'auditSteps',
     COMPLETED_AUDIT: 'completedAudit',
   },
+  AUDIT_POLLING: {
+    MAX_TOTAL_TIME_MS: 1000 * 1000,
+  },
 };
 
 const AUDIT_STEPS: Omit<AuditProgressStep, 'status'>[] = [
@@ -370,7 +373,7 @@ export default function Dashboard() {
     let pollCount = 0;
     let pollInterval = 1000;
     const maxPollInterval = 3000;
-    const maxTotalTime = 600000;
+    const maxTotalTime = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_TOTAL_TIME_MS;
     let elapsedTime = 0;
     const startTime = originalStartTime || Date.now();
 
