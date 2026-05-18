@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, CartesianGrid } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, Medal, Download } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { generateLeaderboardPDF } from '@/utils/leaderboardPdfExport';
 import { InfoBubble } from '@/components/InfoBubble';
 import {
@@ -17,6 +18,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { brandColors } from '@/lib/brandColors';
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states';
 
 interface LeaderboardEntry {
   rank: number;
@@ -238,41 +240,68 @@ const PerformanceGapAnalysis = ({ stats }: { stats: LeaderboardStats }) => {
   );
 };
 
+const sanitizeLeaderboard = (value: unknown): LeaderboardEntry[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is LeaderboardEntry => {
+      return (
+        typeof entry === 'object' &&
+        entry !== null &&
+        'agency' in entry &&
+        typeof entry.agency === 'object' &&
+        entry.agency !== null &&
+        typeof entry.overallScore === 'number'
+      );
+    })
+    .map((entry, index) => ({
+      rank: Number.isFinite(entry.rank) ? entry.rank : index + 1,
+      overallScore: Number.isFinite(entry.overallScore) ? entry.overallScore : 0,
+      agency: {
+        _id: entry.agency?._id || `agency-${index}`,
+        name: entry.agency?.name || 'Unknown agency',
+        acronym: entry.agency?.acronym || '',
+      },
+    }));
+};
+
 export const AgencyLeaderboard = () => {
   const { token } = useAuth();
+  const { toast } = useToast();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/dashboard/leaderboard?limit=10`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch leaderboard');
-      return response.json() as Promise<LeaderboardData>;
+      return response.json().catch(() => ({ leaderboard: [], count: 0 })) as Promise<LeaderboardData>;
     },
     enabled: !!token,
   });
 
   if (isLoading) {
+    return <ChartSkeleton title="Top Agencies" description="Performance rankings and insights" showLegend={false} />;
+  }
+
+  if (error || !data) {
     return (
-      <Card className={brandColors.surfaces.dashboardCard}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-500" />
-            Top Agencies
-          </CardTitle>
-          <CardDescription>Performance rankings and insights</CardDescription>
-        </CardHeader>
-        <CardContent className="flex h-96 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-        </CardContent>
-      </Card>
+      <ErrorState
+        title="Leaderboard is unavailable"
+        description={error instanceof Error ? error.message : 'The agency leaderboard could not be loaded right now.'}
+        onRetry={() => void refetch()}
+        retryLabel={isFetching ? 'Retrying...' : 'Retry'}
+        isRetrying={isFetching}
+      />
     );
   }
 
-  const leaderboard = data?.leaderboard || [];
+  const leaderboard = sanitizeLeaderboard(data?.leaderboard);
   const stats = calculateLeaderboardStats(leaderboard);
   const chartData: ChartEntry[] = leaderboard.map((entry) => ({
     name: entry.agency.name,
@@ -291,7 +320,11 @@ export const AgencyLeaderboard = () => {
       await generateLeaderboardPDF(cardRef.current, filename, { leaderboard, stats });
     } catch (downloadError) {
       console.error('Error downloading PDF:', downloadError);
-      alert('Failed to export PDF. Please try again.');
+      toast({
+        variant: 'destructive',
+        title: 'Export failed',
+        description: 'The agency leaderboard could not be exported. Please try again.',
+      });
     }
   };
 
@@ -413,9 +446,12 @@ export const AgencyLeaderboard = () => {
               <PerformanceGapAnalysis stats={stats} />
             </>
           ) : (
-            <div className="flex h-48 items-center justify-center text-slate-500">
-              No leaderboard data available
-            </div>
+            <EmptyState
+              title="No leaderboard data available"
+              description="Complete more audits to compare agencies here."
+              compact
+              className="border-0 bg-transparent shadow-none"
+            />
           )}
         </CardContent>
       </Card>

@@ -1,26 +1,14 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  Menu,
-  Settings,
-  UserCircle2,
-  LogOut,
-  Flag,
-  ChevronDown,
-} from "lucide-react";
+import { Flag, ChevronDown, LogOut, Menu, Settings, UserCircle2 } from "lucide-react";
 
+import { WidgetErrorBoundary } from "@/components/error-boundaries/WidgetErrorBoundary";
 import NotificationCenter from "./NotificationCenter";
 import ReportProblemModal from "./ReportProblemModal";
 import ConfirmationDialogComponent from "./ConfirmationDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardSidebar } from "@/contexts/DashboardSidebarContext";
 import { brandColors } from "@/lib/brandColors";
@@ -74,14 +62,14 @@ export default function Header() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { isMobile, setMobileOpen } = useDashboardSidebar();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const [profileOpen, setProfileOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const pageMeta = getPageMeta(location.pathname);
   const profileLabel = user?.fullName || user?.username || "MASID";
-  const profileMeta = user?.positionTitle || user?.role || "Audit workspace";
   const initials = profileLabel
     .split(/\s+/)
     .filter(Boolean)
@@ -91,7 +79,7 @@ export default function Header() {
 
   const handleNavigate = (path: string) => {
     navigate(path);
-    setDropdownOpen(false);
+    setProfileOpen(false);
   };
 
   const handleLogoutConfirm = async () => {
@@ -99,7 +87,7 @@ export default function Header() {
     try {
       await logout();
       setLogoutDialogOpen(false);
-      setDropdownOpen(false);
+      setProfileOpen(false);
       navigate("/login");
     } finally {
       setIsLoggingOut(false);
@@ -109,12 +97,7 @@ export default function Header() {
   return (
     <>
       <header className={cn("sticky top-0 z-30 h-16", brandColors.appShell.header)}>
-        <div
-          className={cn(
-            "flex h-full items-center justify-between gap-4",
-            brandColors.appShell.contentPadding
-          )}
-        >
+        <div className={cn("flex h-full items-center justify-between gap-4", brandColors.appShell.contentPadding)}>
           <div className="flex min-w-0 items-center gap-3">
             {isMobile && (
               <Button
@@ -129,22 +112,25 @@ export default function Header() {
               </Button>
             )}
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold text-slate-800">
-                {pageMeta.title}
-              </h1>
-              <p className="hidden truncate text-xs text-slate-500 sm:block">
-                {pageMeta.subtitle}
-              </p>
+              <h1 className="truncate text-base font-semibold text-slate-800">{pageMeta.title}</h1>
+              <p className="hidden truncate text-xs text-slate-500 sm:block">{pageMeta.subtitle}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <NotificationCenter />
+            <WidgetErrorBoundary
+              title="Notifications"
+              description="Notifications are temporarily unavailable, but the rest of the header is still working."
+              mode="inline"
+            >
+              <NotificationCenter />
+            </WidgetErrorBoundary>
 
             {/* Profile Dropdown */}
-            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-              <DropdownMenuTrigger asChild>
+            <Popover open={profileOpen} onOpenChange={setProfileOpen}>
+              <PopoverTrigger asChild>
                 <button
+                  type="button"
                   className={cn(
                     "flex items-center gap-2 rounded-xl border border-white/40 bg-white/60 px-2.5 py-1.5",
                     "transition-colors duration-200",
@@ -152,64 +138,70 @@ export default function Header() {
                     "focus:outline-none focus:ring-2 focus:ring-violet-300/60 focus:ring-offset-0",
                     "cursor-pointer"
                   )}
+                  aria-label="Open profile menu"
                 >
                   <Avatar className="h-8 w-8 border border-white/40">
                     <AvatarFallback className="bg-gradient-to-br from-violet-100 to-sky-50 text-xs font-semibold text-violet-700">
                       {initials || "M"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm font-medium text-slate-700">
-                    {profileLabel}
-                  </span>
+                  <span className="text-sm font-medium text-slate-700">{profileLabel}</span>
                   <ChevronDown className="h-4 w-4 text-slate-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {/* Profile */}
-                <DropdownMenuItem
-                  onClick={() => handleNavigate("/profile")}
-                  className="flex items-center gap-2 cursor-pointer rounded-lg transition-colors hover:bg-slate-50"
-                >
-                  <UserCircle2 className="h-4 w-4 text-slate-600" />
-                  <span className="text-sm text-slate-700">Profile</span>
-                </DropdownMenuItem>
+              </PopoverTrigger>
 
-                {/* Settings */}
-                <DropdownMenuItem
-                  onClick={() => handleNavigate("/settings")}
-                  className="flex items-center gap-2 cursor-pointer rounded-lg transition-colors hover:bg-slate-50"
-                >
-                  <Settings className="h-4 w-4 text-slate-600" />
-                  <span className="text-sm text-slate-700">Settings</span>
-                </DropdownMenuItem>
+              <PopoverContent align="end" className="w-48 p-0">
+                <div className="rounded-md border border-slate-200/70 bg-white/95 p-1 shadow-md">
+                  {/* Profile */}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 cursor-pointer rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => handleNavigate("/profile")}
+                  >
+                    <UserCircle2 className="h-4 w-4 text-slate-600" />
+                    <span>Profile</span>
+                  </button>
 
-                {/* Report a problem */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    setReportModalOpen(true);
-                    setDropdownOpen(false);
-                  }}
-                  className="flex items-center gap-2 cursor-pointer rounded-lg transition-colors hover:bg-slate-50"
-                >
-                  <Flag className="h-4 w-4 text-amber-600" />
-                  <span className="text-sm text-slate-700">Report a problem</span>
-                </DropdownMenuItem>
+                  {/* Settings */}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 cursor-pointer rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => handleNavigate("/settings")}
+                  >
+                    <Settings className="h-4 w-4 text-slate-600" />
+                    <span>Settings</span>
+                  </button>
 
-                <DropdownMenuSeparator />
+                  {/* Report a problem */}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 cursor-pointer rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => {
+                      setReportModalOpen(true);
+                      setProfileOpen(false);
+                    }}
+                  >
+                    <Flag className="h-4 w-4 text-amber-600" />
+                    <span>Report a problem</span>
+                  </button>
 
-                {/* Log out */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    setLogoutDialogOpen(true);
-                    setDropdownOpen(false);
-                  }}
-                  className="flex items-center gap-2 cursor-pointer rounded-lg transition-colors hover:bg-red-50"
-                >
-                  <LogOut className="h-4 w-4 text-red-600" />
-                  <span className="text-sm text-red-700">Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <div className="my-1 h-px bg-slate-200/70" />
+
+                  {/* Log out */}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 cursor-pointer rounded-lg px-2 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                    onClick={() => {
+                      setLogoutDialogOpen(true);
+                      setProfileOpen(false);
+                    }}
+                  >
+                    <LogOut className="h-4 w-4 text-red-600" />
+                    <span>Log out</span>
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </header>

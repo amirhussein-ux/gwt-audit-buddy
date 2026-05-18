@@ -12,6 +12,8 @@ import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { MultiSelectToolbar } from '@/components/MultiSelectToolbar';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
+import { useToast } from '@/hooks/use-toast';
 
 const ARCHIVE_CONFIG = {
   API: {
@@ -59,6 +61,7 @@ export default function ArchivePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { token, user } = useAuth();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
   const [statusFilter, setStatusFilter] = useState(ARCHIVE_CONFIG.FILTERS.STATUS_ALL);
@@ -74,7 +77,7 @@ export default function ArchivePage() {
 
   const isAdmin = user?.role === 'admin';
 
-  const { data: archiveData, isLoading, error } = useQuery({
+  const { data: archiveData, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['archived-audits'],
     queryFn: async () => {
       const response = await fetch(`${ARCHIVE_CONFIG.API.BASE}${ARCHIVE_CONFIG.API.ENDPOINTS.ARCHIVE}/list`, {
@@ -201,7 +204,11 @@ export default function ArchivePage() {
       setSelectedAuditIds((prev) => prev.filter((id) => !restoreConfirmation.auditIds.includes(id)));
       setRestoreConfirmation({ isOpen: false, auditIds: [] });
     } catch (restoreError) {
-      alert(`Error: ${restoreError instanceof Error ? restoreError.message : 'Unknown error'}`);
+      toast({
+        variant: 'destructive',
+        title: 'Restore failed',
+        description: restoreError instanceof Error ? restoreError.message : 'The audit could not be restored.',
+      });
       setRestoreConfirmation({ isOpen: false, auditIds: [] });
     } finally {
       setIsRestoring(null);
@@ -253,11 +260,13 @@ export default function ArchivePage() {
       ) : null}
 
       {error && (
-        <Card className={cn(brandColors.surfaces.dashboardCard, 'border-red-200 bg-red-50/90')}>
-          <CardContent className="pt-6">
-            <p className="text-red-800">{error instanceof Error ? error.message : 'An error occurred'}</p>
-          </CardContent>
-        </Card>
+        <ErrorState
+          title="Archived audits are unavailable"
+          description={error instanceof Error ? error.message : 'An error occurred while loading archived audits.'}
+          onRetry={() => void refetch()}
+          retryLabel={isFetching ? 'Retrying...' : 'Retry archive'}
+          isRetrying={isFetching}
+        />
       )}
 
       {archiveData?.audits && archiveData.audits.length > 0 && (
@@ -299,41 +308,33 @@ export default function ArchivePage() {
       )}
 
       {!isLoading && !error && (!archiveData?.audits || archiveData.audits.length === 0) && (
-        <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
-          <CardContent className="text-center py-12">
-            <Trash2 className="mx-auto mb-4 h-12 w-12 text-slate-300" />
-            <h3 className="mb-2 text-lg font-semibold text-slate-700">No Archived Audits</h3>
-            <p className="text-slate-600">Archive audits to manage them here</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="No archived audits"
+          description="Archive audits to manage them here."
+          icon={<Trash2 className="h-6 w-6" />}
+        />
       )}
 
       {!isLoading && !error && archiveData?.audits && archiveData.audits.length > 0 && filteredArchives.length === 0 && (
-        <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
-          <CardContent className="text-center py-12">
-            <Search className="mx-auto mb-4 h-12 w-12 text-slate-300" />
-            <h3 className="mb-2 text-lg font-semibold text-slate-700">No Results Found</h3>
-            <p className="mb-4 text-slate-600">Try adjusting your search, date, or status filters</p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSearchQuery('');
-                setDateFilter(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-                setStatusFilter(ARCHIVE_CONFIG.FILTERS.STATUS_ALL);
-              }}
-            >
-              Clear Filters
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="No results found"
+          description="Try adjusting your search, date, or status filters."
+          actionLabel="Clear Filters"
+          onAction={() => {
+            setSearchQuery('');
+            setDateFilter(ARCHIVE_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+            setStatusFilter(ARCHIVE_CONFIG.FILTERS.STATUS_ALL);
+          }}
+          icon={<Search className="h-6 w-6" />}
+        />
       )}
 
       {isLoading ? (
-        <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/60')}>
-          <CardContent className="py-16 text-center">
-            <p className="text-slate-600">Loading archived audits...</p>
-          </CardContent>
-        </Card>
+        <TableSkeleton
+          title="Archived Audits"
+          description="Loading the archive list."
+          columns={6}
+        />
       ) : paginatedArchives.length > 0 ? (
         <Card className={brandColors.surfaces.dashboardCard}>
           <CardContent className="pt-6">

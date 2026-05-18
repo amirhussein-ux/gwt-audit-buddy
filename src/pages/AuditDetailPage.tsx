@@ -1,12 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { WidgetErrorBoundary } from '@/components/error-boundaries/WidgetErrorBoundary';
+import { ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AuditSummaryReport } from '@/components/AuditSummaryReport';
+import { mapAuditResponseToUiModel, parseAuditDetailResponse } from '@/lib/parsers/parseAuditResponse';
 
 /**
  * Audit detail page configuration
@@ -122,27 +125,65 @@ const StatusIcon = ({ found }: { found: boolean }) => {
   );
 };
 
+const isDevelopment = import.meta.env.DEV;
+
+const asArray = <T,>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
+
+const getSafeDate = (value?: string) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 export default function AuditDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { token } = useAuth();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['audit', id],
     queryFn: async () => {
       const response = await fetch(`${AUDIT_DETAIL_CONFIG.API.BASE}${AUDIT_DETAIL_CONFIG.API.ENDPOINTS.AUDIT}/${id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error('Failed to fetch audit details');
-      return response.json() as Promise<AuditDetailData>;
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          typeof payload === 'object' &&
+          payload !== null &&
+          'error' in payload &&
+          typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to fetch audit details';
+        throw new Error(message);
+      }
+
+      const parsed = parseAuditDetailResponse(payload);
+        if (parsed.ok === false) {
+          throw new Error(parsed.error);
+        }
+
+      return mapAuditResponseToUiModel(parsed.data);
     },
     enabled: !!token && !!id,
     staleTime: AUDIT_DETAIL_CONFIG.QUERY.STALE_TIME,
     gcTime: AUDIT_DETAIL_CONFIG.QUERY.GC_TIME,
     refetchInterval: (query) => {
       // Poll every 2 seconds while data is still loading/empty
-      const checksCount = query.state.data?.audit?.auditResults?.checks?.length ?? 0;
-      const hasValidData = checksCount > AUDIT_DETAIL_CONFIG.QUERY.MIN_CHECKS_FOR_COMPLETION;
+      const checksCount =
+        query.state.data?.audit?.auditResults?.checks?.length ??
+        query.state.data?.audit?.checks?.length ??
+        0;
+      const auditStatus = query.state.data?.audit?.status?.toLowerCase();
+      const hasValidData =
+        checksCount > AUDIT_DETAIL_CONFIG.QUERY.MIN_CHECKS_FOR_COMPLETION ||
+        auditStatus === 'success' ||
+        auditStatus === 'completed' ||
+        auditStatus === 'failed' ||
+        auditStatus === 'cancelled';
       return hasValidData ? false : AUDIT_DETAIL_CONFIG.QUERY.POLL_INTERVAL;
     },
     refetchIntervalInBackground: true,
@@ -165,38 +206,54 @@ export default function AuditDetailPage() {
         <Button variant="outline" onClick={() => navigate(AUDIT_DETAIL_CONFIG.ROUTES.RESULTS)} className="mb-4">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Results
         </Button>
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <p className="text-red-800">Error loading audit details. Please try again.</p>
-          </CardContent>
-        </Card>
+        <ErrorState
+          title="Audit details are unavailable"
+          description={error instanceof Error ? error.message : 'Please try loading this audit again.'}
+          onRetry={() => void refetch()}
+          retryLabel={isFetching ? 'Retrying...' : 'Retry audit details'}
+          isRetrying={isFetching}
+        />
       </div>
     );
   }
 
   const audit = data.audit;
   const compliance = data.compliance;
+  const auditUrl =
+    typeof audit.auditUrl === 'string' && audit.auditUrl.trim().length > 0
+      ? audit.auditUrl
+      : 'Unknown audited site';
+  const createdAt = getSafeDate(audit.createdAt);
+  const crawledPages = asArray(audit.crawledPages);
+  const flatPageAudits = asArray(audit.pageAudits);
+  const legacyPageAudits = asArray(audit.auditResults?.pageAudits);
 
   // Helper utilities to make the assessment forms vary per audit (instead of hardcoded `true`)
-  // Backend returns checks nested at auditResults.checks
-  const checks: CheckItem[] = data?.audit?.auditResults?.checks ?? data?.audit?.checks ?? [];
-  const hasPass = (...keys: string[]) =>
-    checks.some((c) => keys.includes(c.key) && c.status === 'Pass');
-  const hasFail = (...keys: string[]) =>
-    checks.some((c) => keys.includes(c.key) && c.status === 'Fail');
-  const getStatus = (...keys: string[]) => {
-    const matchingChecks = checks.filter((c) => keys.includes(c.key));
+  // `data.audit.checks` comes from the parser + mapper, so it is already normalized to `CheckItem[]` (with `key` present).
+  const checks: CheckItem[] = (data.audit.checks || []).map((c) => ({
+  key: c.key ?? '',
+  status: c.status ?? 'NotTested',
+}));
 
-    if (matchingChecks.some((c) => c.status === 'Pass')) {
-      return 'Pass';
-    }
+const hasPass = (...keys: string[]) =>
+  checks.some((c) => keys.includes(c.key) && c.status === 'Pass');
 
-    if (matchingChecks.some((c) => c.status === 'Fail')) {
-      return 'Fail';
-    }
+const hasFail = (...keys: string[]) =>
+  checks.some((c) => keys.includes(c.key) && c.status === 'Fail');
 
-    return 'N/A';
-  };
+const getStatus = (...keys: string[]) => {
+  const matchingChecks = checks.filter((c) => keys.includes(c.key));
+
+  if (matchingChecks.some((c) => c.status === 'Pass')) {
+    return 'Pass';
+  }
+
+  if (matchingChecks.some((c) => c.status === 'Fail')) {
+    return 'Fail';
+  }
+
+  return 'N/A';
+};
 
   // Helper: Count passed checks matching any key pattern
   const countPass = (...patterns: string[]) => {
@@ -248,9 +305,9 @@ export default function AuditDetailPage() {
   };
 
   // DEBUG: Log what checks we have
-  console.log(`[AuditDetailPage] ${audit.auditUrl} - Audit ID: ${id}`);
-  console.log('[AuditDetailPage] Total checks loaded:', checks.length);
-  if (checks.length > 0) {
+  if (isDevelopment && checks.length > 0) {
+    console.log(`[AuditDetailPage] ${auditUrl} - Audit ID: ${id}`);
+    console.log('[AuditDetailPage] Total checks loaded:', checks.length);
     const allKeys = new Set(checks.map(c => c.key));
     const passCount = checks.filter(c => c.status === 'Pass').length;
     const failCount = checks.filter(c => c.status === 'Fail').length;
@@ -281,12 +338,12 @@ export default function AuditDetailPage() {
   }
 
   const pagesAnalyzed =
-    data?.audit?.crawledPages?.length ??
-    data?.audit?.crawlSummary?.pagesCrawled ??
-    data?.audit?.auditResults?.crawlSummary?.pagesCrawled ??
-    data?.audit?.pageAudits?.length ??
-    data?.audit?.auditResults?.pageAudits?.length ??
-    data?.audit?.performance?.pagesCrawled ??
+    crawledPages.length ||
+    audit.crawlSummary?.pagesCrawled ||
+    audit.auditResults?.crawlSummary?.pagesCrawled ||
+    flatPageAudits.length ||
+    legacyPageAudits.length ||
+    audit.performance?.pagesCrawled ||
     0;
 
   // Example “wire-up” booleans you can reuse in your assessment UI:
@@ -316,21 +373,30 @@ export default function AuditDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Results
         </Button>
         <div className="text-right">
-          <h1 className="text-2xl font-bold">{audit.auditUrl}</h1>
+          <h1 className="text-2xl font-bold">{auditUrl}</h1>
           <p className="text-sm text-slate-600">
-            Audited {new Date(audit.createdAt).toLocaleDateString()} at{' '}
-            {new Date(audit.createdAt).toLocaleTimeString()}
+            {createdAt
+              ? `Audited ${createdAt.toLocaleDateString()} at ${createdAt.toLocaleTimeString()}`
+              : 'Audit completion time unavailable'}
           </p>
         </div>
       </div>
 
-      {/* Web Accessibility Audit Summary Report */}
-      <AuditSummaryReport
-        audit={audit}
-        compliance={compliance || undefined}
-        uiReport={data?.uiReport || undefined}
-      />
+      <WidgetErrorBoundary
+        title="Audit summary report"
+        description="The summary report could not be rendered for this audit. You can retry this section without leaving the page."
+      >
+        <AuditSummaryReport
+          audit={audit}
+          compliance={compliance || undefined}
+          uiReport={data?.uiReport || undefined}
+        />
+      </WidgetErrorBoundary>
 
+      <WidgetErrorBoundary
+        title="Audit evaluation details"
+        description="Detailed audit tables are temporarily unavailable, but the rest of this audit can still recover."
+      >
       {/* Tabs for different sections */}
       <Tabs defaultValue="presence-evaluation" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
@@ -370,7 +436,7 @@ export default function AuditDetailPage() {
                       { label: '1. Home', value: hasPass('navigation.home_link'), remark: hasPass('navigation.home_link') ? 'Homepage present' : 'Homepage not detected' },
                       { label: '2. Philippine Standard Time', value: hasPass('presence.pst'), remark: hasPass('presence.pst') ? 'PST found' : 'PST not detected' },
                       { label: '3. Links to other agencies (GOVPH and Standard Footer)', value: hasPass('presence.govph_link'), remark: hasPass('presence.govph_link') ? 'External agency links verified' : 'Agency links not found' },
-                      { label: '4. Site Map', value: hasPass('navigation.sitemap_structure') || (audit.crawledPages?.length || 0) > 1, remark: (hasPass('navigation.sitemap_structure') || (audit.crawledPages?.length || 0) > 1) ? 'Site structure available' : 'Sitemap not found' },
+                      { label: '4. Site Map', value: hasPass('navigation.sitemap_structure') || crawledPages.length > 1, remark: (hasPass('navigation.sitemap_structure') || crawledPages.length > 1) ? 'Site structure available' : 'Sitemap not found' },
                     ].map((item, idx) => (
                       <tr key={`s1a${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
@@ -486,7 +552,7 @@ export default function AuditDetailPage() {
                     </tr>
                     {[
                       { label: '1. Search function', value: hasChecksPassing('search'), remark: hasChecksPassing('search') ? 'Search capability present' : 'Search function not found' },
-                      { label: '2. Site map', value: hasChecksPassing('sitemap') || (audit.crawledPages?.length || 0) > 1, remark: (hasChecksPassing('sitemap') || (audit.crawledPages?.length || 0) > 1) ? 'Sitemap available' : 'Sitemap not available' },
+                      { label: '2. Site map', value: hasChecksPassing('sitemap') || crawledPages.length > 1, remark: (hasChecksPassing('sitemap') || crawledPages.length > 1) ? 'Sitemap available' : 'Sitemap not available' },
                     ].map((item, idx) => (
                       <tr key={`s2b${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
                         <td className="p-3 pl-6">{item.label}</td>
@@ -976,7 +1042,7 @@ export default function AuditDetailPage() {
                     {[
                       { label: '1. Users can easily access the site or application', value: true, remark: 'Site access verified' },
                       { label: '2. Users can easily get back to the homepage or a relevant start point.', value: true, remark: 'Homepage access verified' },
-                      { label: '3. A clear and well structure site map or index is provided (where necessary).', value: audit.crawledPages?.length > 0, remark: 'Sitemap available' },
+                      { label: '3. A clear and well structure site map or index is provided (where necessary).', value: crawledPages.length > 0, remark: 'Sitemap available' },
                       { label: '4. The navigational scheme (e.g. menu) is easy to find, intuitive and consistent.', value: true, remark: 'Navigation consistency verified' },
                     ].map((item, idx) => (
                       <tr key={`nav-a${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
@@ -1097,7 +1163,7 @@ export default function AuditDetailPage() {
                     {[
                       { label: '1. Title tags', value: true, remark: 'Title tags verified' },
                       { label: '2. Meta descriptions', value: true, remark: 'Meta descriptions verified' },
-                      { label: '3. Headers', value: (audit.checks ?? audit.auditResults?.checks)?.some((c: CheckItem) => c.key?.includes('heading')), remark: 'Header structure verified' },
+                      { label: '3. Headers', value: checks.some((c: CheckItem) => c.key?.includes('heading')), remark: 'Header structure verified' },
                       { label: '4. URLs', value: true, remark: 'URL descriptiveness verified' },
                     ].map((item, idx) => (
                       <tr key={`cont-a${idx}`} className="border-b border-slate-200 hover:bg-slate-50">
@@ -1225,7 +1291,7 @@ export default function AuditDetailPage() {
                       <td colSpan={3} className="p-2 font-bold text-slate-800 pl-4">H. Provide text alternatives for any non-text content</td>
                     </tr>
                     {[
-                      { label: '1. All images, form image buttons, and image map hot spots have appropriate, equivalent alternative text.', value: (audit.checks ?? audit.auditResults?.checks)?.some((c: CheckItem) => c.key?.includes('alt-text')), remark: 'Image ALT text verified' },
+                      { label: '1. All images, form image buttons, and image map hot spots have appropriate, equivalent alternative text.', value: checks.some((c: CheckItem) => c.key?.includes('alt-text')), remark: 'Image ALT text verified' },
                       { label: '2. Images that do not convey content, are decorative, or with content that is already conveyed in text are given null alt text (alt="") or implemented as CSS backgrounds.', value: true, remark: 'Decorative image handling verified' },
                       { label: '3. All linked images have descriptive alternative text.', value: true, remark: 'Linked image ALT text verified' },
                       { label: '4. Equivalent alternatives to complex images are provided in context or on a separate (linked and/or referenced via longdesc) page.', value: true, remark: 'Complex image alternatives verified' },
@@ -1315,16 +1381,16 @@ export default function AuditDetailPage() {
                 <p className="text-slate-600 mb-3">
                   Total pages crawled: <span className="font-bold">{pagesAnalyzed}</span>
                 </p>
-                {audit.crawledPages && audit.crawledPages.length > 0 && (
+                {crawledPages.length > 0 && (
                   <div className="space-y-2">
-                    {audit.crawledPages.slice(0, 5).map((page: { url: string }, idx: number) => (
+                    {crawledPages.slice(0, 5).map((page: { url: string }, idx: number) => (
                       <div key={idx} className="text-xs p-2 bg-slate-50 rounded flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-green-600" />
                         <span className="text-slate-600 truncate">{page.url}</span>
                       </div>
                     ))}
-                    {audit.crawledPages.length > 5 && (
-                      <p className="text-xs text-slate-500 italic">+ {audit.crawledPages.length - 5} more pages</p>
+                    {crawledPages.length > 5 && (
+                      <p className="text-xs text-slate-500 italic">+ {crawledPages.length - 5} more pages</p>
                     )}
                   </div>
                 )}
@@ -1333,6 +1399,7 @@ export default function AuditDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      </WidgetErrorBoundary>
     </div>
   );
 }

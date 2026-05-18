@@ -1,10 +1,9 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { PageSkeleton } from '@/components/states';
 
 // Loading and error UI configuration
 const PROTECTED_ROUTE_CONFIG = {
-  LOADER_SIZE: 'h-12 w-12',
-  LOADER_COLOR: 'border-b-2 border-blue-600',
   MIN_HEIGHT: 'min-h-screen',
 };
 
@@ -23,8 +22,8 @@ interface ProtectedRouteProps {
  * Loading spinner component
  */
 const LoadingSpinner = () => (
-  <div className={`flex items-center justify-center ${PROTECTED_ROUTE_CONFIG.MIN_HEIGHT}`}>
-    <div className={`animate-spin rounded-full ${PROTECTED_ROUTE_CONFIG.LOADER_SIZE} ${PROTECTED_ROUTE_CONFIG.LOADER_COLOR}`}></div>
+  <div className={`bg-background p-6 ${PROTECTED_ROUTE_CONFIG.MIN_HEIGHT}`}>
+    <PageSkeleton variant="cards" cardCount={2} />
   </div>
 );
 

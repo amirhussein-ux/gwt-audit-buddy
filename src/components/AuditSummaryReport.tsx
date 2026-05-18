@@ -2,69 +2,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AuditDetailUiModel } from '@/lib/parsers/parseAuditResponse';
 
-interface CheckItem {
-  key: string;
-  status: 'Pass' | 'Fail' | 'N/A' | 'NotTested';
-}
-
-interface AuditData {
-  _id?: string;
-  auditUrl: string;
-  createdAt: string;
-  // Flat structure (new backend format)
-  checks?: CheckItem[];
-  pageAudits?: Array<{ url: string }>;
-  crawlSummary?: { pagesCrawled?: number };
-  // Legacy nested structure (kept for backward compatibility)
-  auditResults?: { checks?: CheckItem[] };
-  // Metadata
-  pst?: { found: boolean };
-  transparencySeal?: { found: boolean };
-  performance?: { loadTimeMs: number; pagesCrawled?: number };
-  crawledPages?: Array<{ url: string }>;
-  masthead?: { aboutUs?: boolean; contactUs?: boolean };
-  citizensCharter?: { found?: boolean };
-}
-
-interface ComplianceData {
-  webPresence?: {
-    stage1: number;
-    stage2: number;
-    stage3: number;
-    stage4: number;
-  };
-  webUsability?: {
-    accessibility: number;
-    identity: number;
-    navigation: number;
-    content: number;
-  };
-}
-
-interface UIReportData {
-  webPresence?: {
-    stage1: number;
-    stage2: number;
-    stage3: number;
-    stage4: number;
-  };
-  webUsability?: {
-    accessibility: number;
-    identity: number;
-    navigation: number;
-    content: number;
-  };
-  methodology?: { pagesCrawled: number };
-}
-
-interface AuditSummaryReportProps {
-  audit: AuditData;
-  compliance?: ComplianceData;
-  uiReport?: UIReportData;
+type AuditSummaryReportProps = {
+  audit: AuditDetailUiModel['audit'];
+  compliance?: AuditDetailUiModel['compliance'];
+  uiReport?: AuditDetailUiModel['uiReport'];
   onDownloadExcel?: () => void;
   onDownloadPdf?: () => void;
-}
+};
 
 export function AuditSummaryReport({ 
   audit, 
@@ -74,6 +20,14 @@ export function AuditSummaryReport({
   onDownloadPdf 
 }: AuditSummaryReportProps) {
   const { token } = useAuth();
+  const auditUrl = typeof audit.auditUrl === 'string' ? audit.auditUrl : '';
+  const getReportFilenameBase = () => {
+    try {
+      return new URL(auditUrl).hostname || 'audit-report';
+    } catch {
+      return 'audit-report';
+    }
+  };
   
   // Backend now returns flat structure: checks at top level, not nested under auditResults
   const checks = audit.checks ?? audit.auditResults?.checks ?? [];
@@ -160,11 +114,11 @@ export function AuditSummaryReport({
     return safePct(Math.round((passed / groups.length) * 100));
   })();
 
-  // These are the actual category scores (use uiReport > compliance > fallbacks)
-  const accessibilityScore = safePct(uiReport?.webUsability?.accessibility ?? compliance?.webUsability?.accessibility ?? usabilityA11yFallback);
-  const identityScore = safePct(uiReport?.webUsability?.identity ?? compliance?.webUsability?.identity ?? usabilityIdentityFallback);
-  const navigationScore = safePct(uiReport?.webUsability?.navigation ?? compliance?.webUsability?.navigation ?? usabilityNavFallback);
-  const contentScore = safePct(uiReport?.webUsability?.content ?? compliance?.webUsability?.content ?? usabilityContentFallback);
+  // These are the actual category scores (use uiReport > fallbacks)
+  const accessibilityScore = safePct(uiReport?.webUsability?.accessibility ?? usabilityA11yFallback);
+  const identityScore = safePct(uiReport?.webUsability?.identity ?? usabilityIdentityFallback);
+  const navigationScore = safePct(uiReport?.webUsability?.navigation ?? usabilityNavFallback);
+  const contentScore = safePct(uiReport?.webUsability?.content ?? usabilityContentFallback);
 
   const usabilityAverage = safePct(
     (accessibilityScore + identityScore + navigationScore + contentScore) / 4
@@ -193,7 +147,7 @@ export function AuditSummaryReport({
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      const hostname = new URL(audit.auditUrl).hostname;
+      const hostname = getReportFilenameBase();
       const date = new Date(audit.createdAt).toISOString().split('T')[0];
       link.download = `${hostname}_audit_${date}.xlsx`;
       link.href = url;
@@ -221,7 +175,7 @@ export function AuditSummaryReport({
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      const hostname = new URL(audit.auditUrl).hostname;
+      const hostname = getReportFilenameBase();
       const date = new Date(audit.createdAt).toISOString().split('T')[0];
       link.download = `${hostname}_audit_${date}.pdf`;
       link.href = url;

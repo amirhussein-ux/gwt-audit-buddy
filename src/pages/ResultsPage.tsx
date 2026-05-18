@@ -13,6 +13,8 @@ import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { MultiSelectToolbar } from '@/components/MultiSelectToolbar';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
+import { useToast } from '@/hooks/use-toast';
 
 const RESULTS_CONFIG = {
   API: {
@@ -61,10 +63,13 @@ interface AuditResult {
   };
 }
 
+const isAuditResultsArray = (value: unknown): value is AuditResult[] => Array.isArray(value);
+
 export default function ResultsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { token, user } = useAuth();
+  const { toast } = useToast();
 
   const [completedAuditId, setCompletedAuditId] = useState<string | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -81,7 +86,7 @@ export default function ResultsPage() {
     auditIds: [],
   });
 
-  const { data: audits, isLoading, error } = useQuery({
+  const { data: audits, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['audits'],
     queryFn: async () => {
       const response = await fetch(`${RESULTS_CONFIG.API.BASE}/audit`, {
@@ -95,7 +100,7 @@ export default function ResultsPage() {
         throw new Error(err.error || 'Failed to fetch audits');
       }
       const result = await response.json();
-      return result.audits || [];
+      return isAuditResultsArray(result?.audits) ? result.audits : [];
     },
     enabled: !!token,
     staleTime: RESULTS_CONFIG.QUERY.STALE_TIME,
@@ -158,7 +163,7 @@ export default function ResultsPage() {
 
     if (searchQuery.trim()) {
       filtered = filtered.filter((audit: AuditResult) =>
-        audit.auditUrl.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (typeof audit.auditUrl === 'string' ? audit.auditUrl : '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (audit.agency?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
@@ -258,7 +263,11 @@ export default function ResultsPage() {
       setArchiveConfirmation({ isOpen: false, auditIds: [] });
     } catch (archiveError) {
       console.error('Archive error:', archiveError);
-      alert(`Error archiving audit: ${archiveError instanceof Error ? archiveError.message : 'Unknown error'}`);
+      toast({
+        variant: 'destructive',
+        title: 'Archive failed',
+        description: archiveError instanceof Error ? archiveError.message : 'The audit could not be archived.',
+      });
       setArchiveConfirmation({ isOpen: false, auditIds: [] });
     } finally {
       setArchivingId(null);
@@ -281,17 +290,13 @@ export default function ResultsPage() {
 
       <section className="space-y-6">
         {error && (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'border-red-200 bg-red-50/90')}>
-            <CardContent className="pt-6">
-              <p className="text-red-800">{error instanceof Error ? error.message : 'Failed to load audits'}</p>
-              <Button
-                onClick={() => window.location.reload()}
-                className="mt-4 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
-              >
-                Retry
-              </Button>
-            </CardContent>
-          </Card>
+          <ErrorState
+            title="Audit results are unavailable"
+            description={error instanceof Error ? error.message : 'Failed to load audits'}
+            onRetry={() => void refetch()}
+            retryLabel={isFetching ? 'Retrying...' : 'Retry results'}
+            isRetrying={isFetching}
+          />
         )}
 
         {user?.role === 'admin' && audits && audits.length > 0 ? (
@@ -345,53 +350,33 @@ export default function ResultsPage() {
         )}
 
         {!isLoading && !error && (!audits || audits.length === 0) && (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
-            <CardContent className="flex flex-col items-center justify-center py-14">
-              <div className="text-center">
-                <h3 className="mb-2 text-lg font-medium text-slate-900">No Audit Results Yet</h3>
-                <p className="mb-6 text-slate-600">
-                  Run your first audit from the Dashboard to see results here
-                </p>
-                <Button
-                  onClick={() => navigate('/dashboard')}
-                  className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
-                >
-                  Go to Dashboard
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="No audit results yet"
+            description="Run your first audit from the Dashboard to see results here."
+            actionLabel="Go to Dashboard"
+            onAction={() => navigate('/dashboard')}
+          />
         )}
 
         {!isLoading && !error && audits && audits.length > 0 && filteredAudits.length === 0 && (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
-            <CardContent className="flex flex-col items-center justify-center py-14">
-              <div className="text-center">
-                <h3 className="mb-2 text-lg font-medium text-slate-900">No Results Found</h3>
-                <p className="mb-6 text-slate-600">
-                  Try adjusting your search, date, or status filter
-                </p>
-                <Button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setDateFilter(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
-                    setStatusFilter(RESULTS_CONFIG.FILTERS.STATUS_ALL);
-                  }}
-                  className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
-                >
-                  Reset Filters
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="No results found"
+            description="Try adjusting your search, date, or status filter."
+            actionLabel="Reset Filters"
+            onAction={() => {
+              setSearchQuery('');
+              setDateFilter(RESULTS_CONFIG.FILTERS.DATE_OPTIONS.ALL);
+              setStatusFilter(RESULTS_CONFIG.FILTERS.STATUS_ALL);
+            }}
+          />
         )}
 
         {isLoading ? (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/60')}>
-            <CardContent className="py-16 text-center">
-              <p className="text-slate-600">Loading audit results...</p>
-            </CardContent>
-          </Card>
+          <TableSkeleton
+            title="Audit Results"
+            description="Loading the latest completed audits."
+            columns={4}
+          />
         ) : (
           <>
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

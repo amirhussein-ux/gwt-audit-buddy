@@ -1,11 +1,14 @@
-import { lazy, Suspense, useState, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+
+import { AppErrorBoundary } from "@/components/error-boundaries/AppErrorBoundary";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PageSkeleton } from "@/components/states";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Splashscreen from "@/pages/Splashscreen";
 
 const MainLayout = lazy(() => import("@/components/MainLayout"));
@@ -22,21 +25,60 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnReconnect: true,
+    },
+  },
+});
 
 function RouteFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background text-slate-600">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-violet-600" />
-        <p className="text-sm font-medium">Loading…</p>
-      </div>
+    <div className="min-h-screen bg-background p-6">
+      <PageSkeleton variant="cards" cardCount={2} />
     </div>
   );
 }
 
+interface ProtectedShellRouteProps {
+  children: ReactNode;
+  routeName: string;
+  requiredRole?: string;
+}
+
+function ProtectedShellRoute({
+  children,
+  routeName,
+  requiredRole,
+}: ProtectedShellRouteProps) {
+  const location = useLocation();
+  const resetKeys = [location.pathname];
+
+  return (
+    <ProtectedRoute requiredRole={requiredRole}>
+      <AppErrorBoundary
+        resetKeys={resetKeys}
+        title="The application shell encountered an unexpected problem"
+        description="Try reloading this area. If the issue persists, you can still navigate back after retrying."
+      >
+        <MainLayout>
+          <AppErrorBoundary
+            resetKeys={resetKeys}
+            fullPage={false}
+            title={`${routeName} could not be displayed`}
+            description="This page section failed unexpectedly, but the navigation shell is still available."
+          >
+            {children}
+          </AppErrorBoundary>
+        </MainLayout>
+      </AppErrorBoundary>
+    </ProtectedRoute>
+  );
+}
+
 const App = () => {
-  // state must be inside component
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,10 +88,8 @@ const App = () => {
 
   return (
     <>
-      {/* Splash FIRST */}
       {loading && <Splashscreen />}
 
-      {/* App loads AFTER splash */}
       {!loading && (
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
@@ -67,77 +107,63 @@ const App = () => {
                     <Route
                       path="/dashboard"
                       element={
-                        <ProtectedRoute>
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Dashboard">
                             <Dashboard />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 
                     <Route
                       path="/results"
                       element={
-                        <ProtectedRoute>
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Results">
                             <ResultsPage />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 
                     <Route
                       path="/audit-log"
                       element={
-                        <ProtectedRoute>
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Audit Log">
                             <AuditLogPage />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 
                     <Route
                       path="/audit/:id"
                       element={
-                        <ProtectedRoute>
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Audit Details">
                             <AuditDetailPage />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 
                     <Route
                       path="/archive"
                       element={
-                        <ProtectedRoute requiredRole="admin">
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Archive" requiredRole="admin">
                             <ArchivePage />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 
                     <Route
                       path="/profile"
                       element={
-                        <ProtectedRoute>
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Profile">
                             <ProfilePage />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 
                     <Route
                       path="/settings"
                       element={
-                        <ProtectedRoute>
-                          <MainLayout>
+                        <ProtectedShellRoute routeName="Settings">
                             <SettingsPage />
-                          </MainLayout>
-                        </ProtectedRoute>
+                        </ProtectedShellRoute>
                       }
                     />
 

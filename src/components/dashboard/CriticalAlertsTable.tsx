@@ -6,6 +6,7 @@ import { AlertTriangle, AlertCircle } from 'lucide-react';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
 import { InfoBubble } from '@/components/InfoBubble';
+import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
 
 interface CriticalAlert {
   _id: string;
@@ -97,52 +98,43 @@ export const CriticalAlertsTable = () => {
   const { token } = useAuth();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['critical-alerts'],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/dashboard/critical-alerts`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch critical alerts');
-      return response.json() as Promise<CriticalAlertsData>;
+      return response.json().catch(() => ({ alerts: [], total: 0 })) as Promise<CriticalAlertsData>;
     },
     enabled: !!token,
   });
 
   if (isLoading) {
     return (
-      <Card className={cn(ALERTS_CONFIG.CARD_CLASS, brandColors.surfaces.dashboardCard)}>
-        <CardHeader>
-          <CardTitle>Critical Alerts</CardTitle>
-          <CardDescription>Agencies with missing PST, Transparency Seals, or low accessibility</CardDescription>
-        </CardHeader>
-        <CardContent className={`${ALERTS_CONFIG.LOADING_HEIGHT} flex items-center justify-center`}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </CardContent>
-      </Card>
+      <CardSkeleton
+        title="Critical Alerts"
+        description="Agencies with missing PST, Transparency Seals, or low accessibility"
+        variant="list"
+        className={ALERTS_CONFIG.CARD_CLASS}
+      />
     );
   }
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-blue-100 text-blue-800';
-    }
-  };
-
-  const getIssueIcon = (severity: string) => {
-    return severity === 'critical' ? (
-      <AlertTriangle className="h-4 w-4" />
-    ) : (
-      <AlertCircle className="h-4 w-4" />
+  if (error || !data) {
+    return (
+      <ErrorState
+        title="Critical alerts are unavailable"
+        description={error instanceof Error ? error.message : 'The alert feed could not be loaded right now.'}
+        onRetry={() => void refetch()}
+        retryLabel={isFetching ? 'Retrying...' : 'Retry'}
+        isRetrying={isFetching}
+        className={ALERTS_CONFIG.CARD_CLASS}
+      />
     );
-  };
+  }
+
+  const alerts = Array.isArray(data.alerts) ? data.alerts : [];
 
   return (
     <Card className={cn(ALERTS_CONFIG.CARD_CLASS, brandColors.surfaces.dashboardCard)}>
@@ -150,7 +142,7 @@ export const CriticalAlertsTable = () => {
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle>Critical Alerts</CardTitle>
-            <CardDescription>Agencies requiring immediate attention ({data?.total || 0} total)</CardDescription>
+            <CardDescription>Agencies requiring immediate attention ({data?.total || alerts.length} total)</CardDescription>
           </div>
           <div data-export-ignore="true">
             <InfoBubble
@@ -165,20 +157,20 @@ export const CriticalAlertsTable = () => {
         </div>
       </CardHeader>
       <CardContent>
-        {(data?.alerts || []).length > 0 ? (
+        {alerts.length > 0 ? (
           <div className={`space-y-3 ${ALERTS_CONFIG.ITEMS_MAX_HEIGHT} overflow-y-auto`}>
-            {(data?.alerts || []).map((alert, index) => (
+            {alerts.map((alert, index) => (
               <AlertItem key={alert._id || `alert-${index}`} alert={alert} index={index} />
             ))}
           </div>
         ) : (
-          <div className={`${ALERTS_CONFIG.EMPTY_HEIGHT} flex items-center justify-center text-slate-500`}>
-            <div className="text-center">
-              <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-green-500" />
-              <p>No critical alerts</p>
-              <p className="text-xs mt-1">All agencies are in compliance</p>
-            </div>
-          </div>
+          <EmptyState
+            title="No critical alerts"
+            description="All agencies are currently in compliance."
+            icon={<AlertTriangle className="h-6 w-6 text-emerald-500" />}
+            compact
+            className="border-0 bg-transparent shadow-none"
+          />
         )}
       </CardContent>
     </Card>

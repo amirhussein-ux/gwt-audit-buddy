@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,12 +9,17 @@ import AuditInput from '@/components/AuditInput';
 import AuditProgress, { type AuditStep as AuditProgressStep } from '@/components/AuditProgress';
 import AuditCompletionModal from '@/components/AuditCompletionModal';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
+import { WidgetErrorBoundary } from '@/components/error-boundaries/WidgetErrorBoundary';
 import { InfoBubble } from '@/components/InfoBubble';
 import { MultiSelectToolbar } from '@/components/MultiSelectToolbar';
 import { exportDashboardSectionsToPdf } from '@/utils/dashboardPdfExport';
 import { Activity, BarChart3, FileText, ShieldCheck } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { parseDashboardSummary } from '@/lib/parsers/parseDashboardSummary';
+import type { DashboardStats } from '@/lib/validation/dashboardSchemas';
+import { CardSkeleton, ChartSkeleton, ErrorState } from '@/components/states';
 
 const MaturityRadarChart = lazy(() =>
   import('@/components/dashboard/MaturityRadarChart').then((module) => ({
@@ -82,6 +88,28 @@ interface AuditStatusResponse {
 
 type CancellationState = 'idle' | 'in_progress' | 'complete';
 
+const DEFAULT_DASHBOARD_STATS: DashboardStats = {
+  totalAgencies: 0,
+  averageCompliance: 0,
+  totalAudits: 0,
+  statusDistribution: { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
+};
+
+const parseStoredJson = <T,>(rawValue: string | null, fallback: T): T => {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(rawValue) as T;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[Dashboard] Failed to parse stored JSON:', error);
+    }
+    return fallback;
+  }
+};
+
 function DashboardReportSkeleton({
   title,
   description,
@@ -109,6 +137,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { token, user } = useAuth();
+  const { toast } = useToast();
   const reportRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [isRunning, setIsRunning] = useState(false);
@@ -125,15 +154,39 @@ export default function Dashboard() {
   const [steps, setSteps] = useState<AuditProgressStep[]>(
     AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' }))
   );
-  const [dashboardStats, setDashboardStats] = useState({
-    totalAgencies: 0,
-    averageCompliance: 0,
-    totalAudits: 0,
-    statusDistribution: { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
-  });
 
   const dashboardSettings = user?.settings?.dashboard;
   const auditDefaults = user?.settings?.auditDefaults;
+  const {
+    data: dashboardStats = DEFAULT_DASHBOARD_STATS,
+    isLoading: isDashboardStatsLoading,
+    error: dashboardStatsError,
+    refetch: refetchDashboardStats,
+    isFetching: isDashboardStatsFetching,
+  } = useQuery({
+    queryKey: ['dashboard-summary'],
+    queryFn: async (): Promise<DashboardStats> => {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      const response = await fetch(`${API_BASE}/dashboard/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to fetch dashboard summary');
+      }
+
+      const data = await response.json().catch(() => null);
+      const parsed = parseDashboardSummary(data);
+      if (parsed.ok) {
+        return parsed.data;
+      }
+      throw new Error((parsed as { ok: false; error: string }).error);
+    },
+    enabled: !!token,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+  });
 
   const systemOverviewStats = [
     {
@@ -174,17 +227,22 @@ export default function Dashboard() {
     const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     if (!activeAudit || location.pathname !== '/dashboard') return;
 
-    try {
-      const auditData = JSON.parse(activeAudit);
-      setActiveAuditId(auditData.auditLogId);
-      setIsRunning(true);
-      const savedSteps = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
-      if (savedSteps) {
-        setSteps(JSON.parse(savedSteps));
-      }
-    } catch (parseError) {
-      console.error('Failed to parse active audit:', parseError);
+    const auditData = parseStoredJson<{ auditLogId?: string } | null>(activeAudit, null);
+    if (!auditData?.auditLogId) {
       localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      return;
+    }
+
+    setActiveAuditId(auditData.auditLogId);
+    setIsRunning(true);
+
+    const savedSteps = parseStoredJson<AuditProgressStep[] | null>(
+      localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS),
+      null
+    );
+
+    if (Array.isArray(savedSteps) && savedSteps.length > 0) {
+      setSteps(savedSteps);
     }
   }, [location.pathname]);
 
@@ -203,12 +261,10 @@ export default function Dashboard() {
       const completedAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
       if (!completedAudit) return;
 
-      try {
-        const auditData = JSON.parse(completedAudit);
+      const auditData = parseStoredJson<{ auditLogId?: string } | null>(completedAudit, null);
+      if (auditData?.auditLogId) {
         setCompletedAuditId(auditData.auditLogId);
         setShowCompletionModal(true);
-      } catch (parseError) {
-        console.error('Failed to parse completed audit:', parseError);
       }
     };
 
@@ -228,16 +284,21 @@ export default function Dashboard() {
         visible: dashboardSettings?.showTrendChart !== false,
         className: 'lg:col-span-2',
         content: (
-          <Suspense
-            fallback={
-              <DashboardReportSkeleton
-                title="Compliance Trend Report"
-                description="Performance tracking across all agencies."
-              />
-            }
+          <WidgetErrorBoundary
+            title="Compliance Trend Report"
+            description="Performance tracking across all agencies."
           >
-            <ComplianceTrendChart />
-          </Suspense>
+            <Suspense
+              fallback={
+                <ChartSkeleton
+                  title="Compliance Trend Report"
+                  description="Performance tracking across all agencies."
+                />
+              }
+            >
+              <ComplianceTrendChart />
+            </Suspense>
+          </WidgetErrorBoundary>
         ),
       },
       {
@@ -247,16 +308,21 @@ export default function Dashboard() {
         visible: true,
         className: dashboardSettings?.showTrendChart === false ? 'lg:col-span-3' : '',
         content: (
-          <Suspense
-            fallback={
-              <DashboardReportSkeleton
-                title="Maturity Index"
-                description="Overall compliance maturity snapshot."
-              />
-            }
+          <WidgetErrorBoundary
+            title="Maturity Index"
+            description="Overall compliance maturity snapshot."
           >
-            <MaturityRadarChart />
-          </Suspense>
+            <Suspense
+              fallback={
+                <ChartSkeleton
+                  title="Maturity Index"
+                  description="Overall compliance maturity snapshot."
+                />
+              }
+            >
+              <MaturityRadarChart />
+            </Suspense>
+          </WidgetErrorBoundary>
         ),
       },
       {
@@ -266,16 +332,22 @@ export default function Dashboard() {
         visible: dashboardSettings?.showAgencyLeaderboard !== false,
         className: '',
         content: (
-          <Suspense
-            fallback={
-              <DashboardReportSkeleton
-                title="Top Agencies"
-                description="Comparative performance rankings and insights."
-              />
-            }
+          <WidgetErrorBoundary
+            title="Top Agencies"
+            description="Comparative performance rankings and insights."
           >
-            <AgencyLeaderboard />
-          </Suspense>
+            <Suspense
+              fallback={
+                <CardSkeleton
+                  title="Top Agencies"
+                  description="Comparative performance rankings and insights."
+                  variant="list"
+                />
+              }
+            >
+              <AgencyLeaderboard />
+            </Suspense>
+          </WidgetErrorBoundary>
         ),
       },
       {
@@ -285,16 +357,22 @@ export default function Dashboard() {
         visible: dashboardSettings?.showCriticalAlerts !== false,
         className: '',
         content: (
-          <Suspense
-            fallback={
-              <DashboardReportSkeleton
-                title="Critical Alerts"
-                description="Priority agencies that need attention now."
-              />
-            }
+          <WidgetErrorBoundary
+            title="Critical Alerts"
+            description="Priority agencies that need attention now."
           >
-            <CriticalAlertsTable />
-          </Suspense>
+            <Suspense
+              fallback={
+                <CardSkeleton
+                  title="Critical Alerts"
+                  description="Priority agencies that need attention now."
+                  variant="list"
+                />
+              }
+            >
+              <CriticalAlertsTable />
+            </Suspense>
+          </WidgetErrorBoundary>
         ),
       },
     ];
@@ -466,7 +544,7 @@ export default function Dashboard() {
     const resumePolling = async () => {
       try {
         const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
-        const originalStartTime = activeAudit ? JSON.parse(activeAudit).startTime : undefined;
+        const originalStartTime = parseStoredJson<{ startTime?: number } | null>(activeAudit, null)?.startTime;
         await pollAuditCompletion(activeAuditId, token, originalStartTime);
       } catch (pollError) {
         const errorMsg = pollError instanceof Error ? pollError.message : 'Unknown error occurred';
@@ -481,34 +559,6 @@ export default function Dashboard() {
 
     resumePolling();
   }, [activeAuditId, token]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const fetchDashboardStats = async () => {
-      try {
-        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-        const response = await fetch(`${API_BASE}/dashboard/summary`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!response.ok) return;
-        const data = await response.json();
-        setDashboardStats({
-          totalAgencies: data.totalAgencies || 0,
-          averageCompliance: parseFloat(data.averageCompliance) || 0,
-          totalAudits: data.totalAudits || 0,
-          statusDistribution: data.statusDistribution || { excellent: 0, good: 0, fair: 0, poor: 0, critical: 0 },
-        });
-      } catch (statsError) {
-        console.error('[Dashboard] Failed to fetch summary stats:', statsError);
-      }
-    };
-
-    fetchDashboardStats();
-    const interval = setInterval(fetchDashboardStats, 30000);
-    return () => clearInterval(interval);
-  }, [token]);
 
   const handleViewResults = () => {
     if (!completedAuditId) return;
@@ -587,7 +637,11 @@ export default function Dashboard() {
       );
     } catch (exportError) {
       console.error('Failed to export dashboard reports:', exportError);
-      alert('Failed to export the selected reports. Please try again.');
+      toast({
+        variant: 'destructive',
+        title: 'Export failed',
+        description: 'The selected dashboard reports could not be exported. Please try again.',
+      });
     } finally {
       setIsExportingReports(false);
     }
@@ -651,48 +705,68 @@ export default function Dashboard() {
       </section>
 
       <section className="space-y-8">
-        <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/68')}>
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle className="text-lg text-slate-900">System Overview</CardTitle>
-                <CardDescription className="text-sm text-slate-500">
-                  Quick operational metrics for the current audit workspace.
-                </CardDescription>
-              </div>
-              <div data-export-ignore="true">
-                <InfoBubble
-                  title="System Overview"
-                  summary="These summary cards give you a fast operational read of the current workspace."
-                  sections={[
-                    { title: 'How to use it', body: 'Use these values for quick orientation, then move into the detailed report cards below for trend and issue context.' },
-                  ]}
-                />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
-              {systemOverviewStats.map((stat) => (
-                <div key={stat.label} className={cn(brandColors.surfaces.statCard, 'p-4', stat.background)}>
-                  <div className="mb-3 flex items-center justify-between">
-                    <stat.icon className={cn('h-4 w-4', stat.accent)} />
-                    <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">Live</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-medium text-slate-500">{stat.label}</p>
-                      <p className={cn('mt-2 text-2xl font-semibold tracking-tight', stat.accent)}>{stat.value}</p>
-                    </div>
-                    <div data-export-ignore="true">
-                      <InfoBubble title={stat.label} summary={stat.summary} className="h-7 px-2.5" />
-                    </div>
-                  </div>
+        {isDashboardStatsLoading ? (
+          <CardSkeleton
+            title="System Overview"
+            description="Quick operational metrics for the current audit workspace."
+            variant="stats"
+          />
+        ) : dashboardStatsError ? (
+          <ErrorState
+            title="System overview is unavailable"
+            description={
+              dashboardStatsError instanceof Error
+                ? dashboardStatsError.message
+                : 'The dashboard summary could not be loaded right now.'
+            }
+            onRetry={() => void refetchDashboardStats()}
+            retryLabel={isDashboardStatsFetching ? 'Retrying...' : 'Retry summary'}
+            isRetrying={isDashboardStatsFetching}
+          />
+        ) : (
+          <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/68')}>
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-lg text-slate-900">System Overview</CardTitle>
+                  <CardDescription className="text-sm text-slate-500">
+                    Quick operational metrics for the current audit workspace.
+                  </CardDescription>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <div data-export-ignore="true">
+                  <InfoBubble
+                    title="System Overview"
+                    summary="These summary cards give you a fast operational read of the current workspace."
+                    sections={[
+                      { title: 'How to use it', body: 'Use these values for quick orientation, then move into the detailed report cards below for trend and issue context.' },
+                    ]}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+                {systemOverviewStats.map((stat) => (
+                  <div key={stat.label} className={cn(brandColors.surfaces.statCard, 'p-4', stat.background)}>
+                    <div className="mb-3 flex items-center justify-between">
+                      <stat.icon className={cn('h-4 w-4', stat.accent)} />
+                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">Live</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-medium text-slate-500">{stat.label}</p>
+                        <p className={cn('mt-2 text-2xl font-semibold tracking-tight', stat.accent)}>{stat.value}</p>
+                      </div>
+                      <div data-export-ignore="true">
+                        <InfoBubble title={stat.label} summary={stat.summary} className="h-7 px-2.5" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </section>
 
       <section className="space-y-4">

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, CartesianGrid } from 'recharts';
 import { Download, TrendingUp, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { generatePDF } from '@/utils/pdfExport';
 import { InfoBubble } from '@/components/InfoBubble';
 import {
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/chart';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states';
 
 interface ComplianceScoreData {
   data: Record<string, Array<{
@@ -161,34 +163,38 @@ const ColorLegendItem = ({ color, label }: { color: string; label: string }) => 
 
 export const ComplianceTrendChart = () => {
   const { token } = useAuth();
+  const { toast } = useToast();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [selectedRange, setSelectedRange] = useState<string>('quarterly');
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const selectedTimeRange = TIME_RANGES[selectedRange] ?? TIME_RANGES.quarterly;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['compliance-trend', selectedRange],
     queryFn: async () => {
-      const days = TIME_RANGES[selectedRange].days;
-      const response = await fetch(`${API_BASE}/dashboard/compliance-trend?days=${days}`, {
+      const response = await fetch(`${API_BASE}/dashboard/compliance-trend?days=${selectedTimeRange.days}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch compliance trend');
-      return response.json() as Promise<ComplianceScoreData>;
+      return response.json().catch(() => ({ data: {}, period: selectedRange })) as Promise<ComplianceScoreData>;
     },
     enabled: !!token,
   });
 
   if (isLoading) {
+    return <ChartSkeleton title="Compliance Trend Report" description="Performance tracking across all agencies" className="col-span-2" />;
+  }
+
+  if (error || !data) {
     return (
-      <Card className={cn('col-span-2', brandColors.surfaces.dashboardCard)}>
-        <CardHeader>
-          <CardTitle>Compliance Trend</CardTitle>
-          <CardDescription>Analyzing compliance performance over time</CardDescription>
-        </CardHeader>
-        <CardContent className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-        </CardContent>
-      </Card>
+      <ErrorState
+        title="Trend data is unavailable"
+        description={error instanceof Error ? error.message : 'The compliance trend report could not be loaded right now.'}
+        onRetry={() => void refetch()}
+        retryLabel={isFetching ? 'Retrying...' : 'Retry'}
+        isRetrying={isFetching}
+        className="col-span-2"
+      />
     );
   }
 
@@ -197,8 +203,17 @@ export const ComplianceTrendChart = () => {
     const allScores: Record<string, number[]> = {};
 
     Object.values(data.data).forEach((agencyScores) => {
+      if (!Array.isArray(agencyScores)) {
+        return;
+      }
+
       agencyScores.forEach((score) => {
-        const date = new Date(score.createdAt).toLocaleDateString();
+        const parsedDate = new Date(score.createdAt);
+        if (Number.isNaN(parsedDate.getTime()) || !Number.isFinite(score.overallScore)) {
+          return;
+        }
+
+        const date = parsedDate.toISOString().split('T')[0];
         if (!allScores[date]) allScores[date] = [];
         allScores[date].push(score.overallScore);
       });
@@ -222,13 +237,18 @@ export const ComplianceTrendChart = () => {
       }
       const filename = `compliance-trend-${selectedRange}-${new Date().toISOString().split('T')[0]}.pdf`;
       await generatePDF(cardRef.current, filename, {
-        period: TIME_RANGES[selectedRange].label,
+        period: selectedTimeRange.label,
         statistics,
         insight: statistics.insight,
+        complianceDownloadLayout: true,
       });
     } catch (downloadError) {
       console.error('Error downloading PDF:', downloadError);
-      alert('Failed to export PDF. Please try again.');
+      toast({
+        variant: 'destructive',
+        title: 'Export failed',
+        description: 'The compliance trend report could not be exported. Please try again.',
+      });
     }
   };
 
@@ -346,14 +366,7 @@ export const ComplianceTrendChart = () => {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    tickFormatter={(value) => {
-                      try {
-                        const date = new Date(value);
-                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                      } catch {
-                        return value.slice(0, 10);
-                      }
-                    }}
+                    tickFormatter={(value) => (typeof value === 'string' ? value : '')}
                   />
                   <ChartTooltip
                     cursor={false}
@@ -379,10 +392,13 @@ export const ComplianceTrendChart = () => {
                 </LineChart>
               </ChartContainer>
             ) : (
-              <div className="flex h-80 items-center justify-center text-slate-500">
-                <AlertCircle className="mr-2 h-5 w-5" />
-                No trend data available yet
-              </div>
+              <EmptyState
+                title="No trend data available yet"
+                description="Completed audits will appear here once enough score history exists."
+                icon={<AlertCircle className="h-6 w-6" />}
+                compact
+                className="border-0 bg-transparent shadow-none"
+              />
             )}
           </div>
 

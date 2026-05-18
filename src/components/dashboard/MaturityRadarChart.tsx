@@ -1,10 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { Globe, MonitorSmartphone, FileText, AlertCircle } from 'lucide-react';
+import { Globe, MonitorSmartphone, FileText } from 'lucide-react';
 import { InfoBubble } from '@/components/InfoBubble';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states';
 
 interface MaturityData {
   agencies: Array<{
@@ -174,51 +175,46 @@ export const MaturityRadarChart = () => {
   const { token } = useAuth();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['maturity-index'],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/dashboard/maturity-index`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch maturity index');
-      return response.json() as Promise<MaturityData>;
+      return response.json().catch(() => ({ agencies: [] })) as Promise<MaturityData>;
     },
     enabled: !!token,
   });
 
   if (isLoading) {
+    return <ChartSkeleton title="Maturity Index" description="Government website compliance overview" showLegend={false} />;
+  }
+
+  if (error || !data) {
     return (
-      <Card className={brandColors.surfaces.dashboardCard}>
-        <CardHeader>
-          <CardTitle>Maturity Index</CardTitle>
-          <CardDescription>Government website compliance overview</CardDescription>
-        </CardHeader>
-        <CardContent className="flex h-64 flex-col items-center justify-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-          <p className="text-sm text-slate-500">Loading audit data...</p>
-        </CardContent>
-      </Card>
+      <ErrorState
+        title="Maturity data is unavailable"
+        description={error instanceof Error ? error.message : 'The maturity index could not be loaded right now.'}
+        onRetry={() => void refetch()}
+        retryLabel={isFetching ? 'Retrying...' : 'Retry'}
+        isRetrying={isFetching}
+      />
     );
   }
 
-  if (isError || !data) {
-    return (
-      <Card className={brandColors.surfaces.dashboardCard}>
-        <CardHeader>
-          <CardTitle>Maturity Index</CardTitle>
-          <CardDescription>Government website compliance overview</CardDescription>
-        </CardHeader>
-        <CardContent className="flex h-40 flex-col items-center justify-center gap-2 text-center">
-          <AlertCircle className="h-8 w-8 text-red-400" />
-          <p className="text-sm text-slate-600">Could not load maturity data.</p>
-          <p className="text-xs text-slate-400">Check your connection or run an audit first.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const agencies = data.agencies ?? [];
+  const agencies = Array.isArray(data.agencies) ? data.agencies : [];
   const auditedAgencies = agencies.filter((agency) => agency.latestScore);
+
+  if (auditedAgencies.length === 0) {
+    return (
+      <EmptyState
+        title="No maturity data yet"
+        description="Run at least one completed audit to populate the maturity index."
+        compact
+      />
+    );
+  }
 
   const webPresenceSources = auditedAgencies.filter((agency) => typeof agency.latestScore?.webPresence?.averageScore === 'number');
   const usabilitySources = auditedAgencies.filter((agency) => typeof (agency.latestScore?.webUsability?.total ?? agency.latestScore?.webUsability?.accessibility) === 'number');

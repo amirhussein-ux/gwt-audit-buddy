@@ -4,12 +4,13 @@ import AuditCompletionModal from '@/components/AuditCompletionModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, AlertCircle, Search } from 'lucide-react';
+import { Clock, AlertCircle, Search, CheckCircle } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { brandColors } from '@/lib/brandColors';
 import { cn } from '@/lib/utils';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/states';
 
 const AUDIT_LOG_CONFIG = {
   API: {
@@ -49,6 +50,8 @@ interface AuditLogEntry {
   transparencySeal?: { found: boolean };
 }
 
+const isAuditLogArray = (value: unknown): value is AuditLogEntry[] => Array.isArray(value);
+
 export default function AuditLogPage() {
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -59,7 +62,7 @@ export default function AuditLogPage() {
   const [dateFilter, setDateFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.DATE_OPTIONS.ALL);
   const [statusFilter, setStatusFilter] = useState(AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL);
 
-  const { data: logs, isLoading, error } = useQuery({
+  const { data: logs, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['audit-logs'],
     queryFn: async () => {
       const response = await fetch(`${AUDIT_LOG_CONFIG.API.BASE}/audit`, {
@@ -73,7 +76,7 @@ export default function AuditLogPage() {
         throw new Error(err.error || 'Failed to fetch audit logs');
       }
       const data = await response.json();
-      const auditList = data.audits || [];
+      const auditList = isAuditLogArray(data?.audits) ? data.audits : [];
       return auditList.sort((a: AuditLogEntry, b: AuditLogEntry) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -148,7 +151,7 @@ export default function AuditLogPage() {
         const agencyName =
           typeof log.agency === 'object' ? (log.agency?.name ?? '') : (log.agency ?? '');
         return (
-          log.auditUrl.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (typeof log.auditUrl === 'string' ? log.auditUrl : '').toLowerCase().includes(searchQuery.toLowerCase()) ||
           agencyName.toLowerCase().includes(searchQuery.toLowerCase())
         );
       });
@@ -224,11 +227,13 @@ export default function AuditLogPage() {
 
       <section className="space-y-6">
         {error && (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'border-red-200 bg-red-50/90')}>
-            <CardContent className="pt-6">
-              <p className="text-red-800">{error instanceof Error ? error.message : 'Failed to load audit logs'}</p>
-            </CardContent>
-          </Card>
+          <ErrorState
+            title="Audit history is unavailable"
+            description={error instanceof Error ? error.message : 'Failed to load audit logs'}
+            onRetry={() => void refetch()}
+            retryLabel={isFetching ? 'Retrying...' : 'Retry history'}
+            isRetrying={isFetching}
+          />
         )}
 
         {logs && logs.length > 0 && (
@@ -262,43 +267,31 @@ export default function AuditLogPage() {
         )}
 
         {!isLoading && !error && (!logs || logs.length === 0) && (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
-            <CardContent className="flex flex-col items-center justify-center py-14">
-              <div className="text-center">
-                <h3 className="mb-2 text-lg font-medium text-slate-900">No Audit History</h3>
-                <p className="text-slate-600">No audits have been performed yet</p>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="No audit history"
+            description="No audits have been performed yet."
+          />
         )}
 
         {!isLoading && !error && logs && logs.length > 0 && filteredLogs.length === 0 && (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'border-dashed bg-white/60')}>
-            <CardContent className="flex flex-col items-center justify-center py-14">
-              <div className="text-center">
-                <h3 className="mb-2 text-lg font-medium text-slate-900">No Results Found</h3>
-                  <p className="mb-6 text-slate-600">Try adjusting your search, date, or status filter</p>
-                <Button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setDateFilter('all');
-                    setStatusFilter(AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL);
-                  }}
-                  className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-500 text-white hover:from-violet-500 hover:to-indigo-500"
-                >
-                  Reset Filters
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="No results found"
+            description="Try adjusting your search, date, or status filter."
+            actionLabel="Reset Filters"
+            onAction={() => {
+              setSearchQuery('');
+              setDateFilter('all');
+              setStatusFilter(AUDIT_LOG_CONFIG.FILTERS.STATUS_ALL);
+            }}
+          />
         )}
 
         {isLoading ? (
-          <Card className={cn(brandColors.surfaces.dashboardCard, 'bg-white/60')}>
-            <CardContent className="py-16 text-center">
-              <p className="text-slate-600">Loading audit history...</p>
-            </CardContent>
-          </Card>
+          <TableSkeleton
+            title="Audit History"
+            description="Loading the latest audit activity."
+            columns={6}
+          />
         ) : (
           filteredLogs.length > 0 && (
             <Card className={brandColors.surfaces.dashboardCard}>
