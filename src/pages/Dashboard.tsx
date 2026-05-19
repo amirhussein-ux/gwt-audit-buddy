@@ -148,6 +148,7 @@ export default function Dashboard() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [cancellationState, setCancellationState] = useState<CancellationState>('idle');
+  const cancellationStateRef = useRef<CancellationState>('idle');
   const [reportSelectionEnabled, setReportSelectionEnabled] = useState(false);
   const [selectedReportIds, setSelectedReportIds] = useState<string[]>([]);
   const [isExportingReports, setIsExportingReports] = useState(false);
@@ -245,6 +246,66 @@ export default function Dashboard() {
       setSteps(savedSteps);
     }
   }, [location.pathname]);
+
+  /**
+   * Resume in-progress audits after login
+   * When user logs back in, check API for any in-progress audits and resume them
+   */
+  useEffect(() => {
+    const resumeInProgressAudit = async () => {
+      // Only run if: user is authenticated, on dashboard, and no active audit in localStorage
+      if (!token || !user || location.pathname !== '/dashboard' || activeAuditId) return;
+
+      const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      if (activeAudit) {
+        // Already loaded from localStorage in previous effect
+        return;
+      }
+
+      try {
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+        const response = await fetch(`${API_BASE}/audit?status=in_progress&limit=1`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          console.error('[Dashboard] Failed to fetch in-progress audits:', response.status);
+          return;
+        }
+
+        const data = await response.json();
+        const audits = data.audits || [];
+
+        // If user has an in-progress audit, resume it
+        if (audits.length > 0) {
+          const inProgressAudit = audits[0];
+          const auditData = {
+            auditLogId: inProgressAudit._id,
+            url: inProgressAudit.auditUrl,
+            status: inProgressAudit.status,
+          };
+
+          localStorage.setItem(
+            DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT,
+            JSON.stringify(auditData)
+          );
+
+          setActiveAuditId(inProgressAudit._id);
+          setIsRunning(true);
+
+          console.log('[Dashboard] Resumed in-progress audit:', inProgressAudit._id);
+        }
+      } catch (error) {
+        console.error('[Dashboard] Error resuming audit:', error);
+        // Silently fail - don't block dashboard from loading
+      }
+    };
+
+    resumeInProgressAudit();
+  }, [token, user, location.pathname, activeAuditId]);
 
   useEffect(() => {
     const handleAuditComplete = (event: Event) => {
@@ -380,6 +441,11 @@ export default function Dashboard() {
     return reports.filter((report) => report.visible);
   }, [dashboardSettings?.showAgencyLeaderboard, dashboardSettings?.showCriticalAlerts, dashboardSettings?.showTrendChart]);
 
+  const setCancellationStateSynced = (state: CancellationState) => {
+    cancellationStateRef.current = state;
+    setCancellationState(state);
+  };
+
   const finalizeCancelledAuditUi = () => {
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
@@ -387,7 +453,7 @@ export default function Dashboard() {
     setTimeout(() => {
       setIsRunning(false);
       setSteps(AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' })));
-      setCancellationState('idle');
+      setCancellationStateSynced('idle');
     }, 2200);
   };
 
@@ -399,7 +465,7 @@ export default function Dashboard() {
 
     const url = data;
     setAuditError(null);
-    setCancellationState('idle');
+    setCancellationStateSynced('idle');
     setIsRunning(true);
     setSteps((prev) => prev.map((step) => ({ ...step, status: step.id === 'fetch' ? 'running' : 'pending' })));
 
@@ -470,18 +536,18 @@ export default function Dashboard() {
           );
 
           if (isCancellationPending) {
-            setCancellationState('in_progress');
-          } else if (cancellationState === 'in_progress') {
-            setCancellationState('idle');
+            setCancellationStateSynced('in_progress');
+          } else if (cancellationStateRef.current === 'in_progress') {
+            setCancellationStateSynced('idle');
           }
 
           if (auditStatus === 'success') {
             auditComplete = true;
-            setCancellationState('idle');
+            setCancellationStateSynced('idle');
           } else if (auditStatus === 'failed') {
             throw new Error(auditData.audit?.error || 'Audit failed on server');
           } else if (auditStatus === 'cancelled') {
-            setCancellationState('complete');
+            setCancellationStateSynced('complete');
             finalizeCancelledAuditUi();
             return;
           } else {
@@ -535,7 +601,7 @@ export default function Dashboard() {
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
     setIsRunning(false);
-    setCancellationState('idle');
+    setCancellationStateSynced('idle');
   };
 
   useEffect(() => {
@@ -551,7 +617,7 @@ export default function Dashboard() {
         setAuditError(errorMsg);
         setSteps((prev) => prev.map((step) => (step.status === 'running' ? { ...step, status: 'failed' } : step)));
         setIsRunning(false);
-        setCancellationState('idle');
+        setCancellationStateSynced('idle');
         localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
         localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
       }
@@ -595,7 +661,7 @@ export default function Dashboard() {
         throw new Error(error.error || `Server error: ${response.status}`);
       }
 
-      setCancellationState('in_progress');
+      setCancellationStateSynced('in_progress');
       setAuditError(null);
       setCancelConfirmationOpen(false);
     } catch (cancelError) {

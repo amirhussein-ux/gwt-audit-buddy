@@ -1,15 +1,19 @@
 const rateLimit = require('express-rate-limit');
+const { getConfig } = require('../config/env');
 
 /**
  * Rate limiting configuration for different endpoint categories
  * Each has different limits based on sensitivity and resource usage
  */
-const RATE_LIMIT_CONFIG = {
-  WINDOW_MS: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  MAX_REQUESTS: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 5, // 5 attempts
-};
-
-const BLOCK_SUSPICIOUS_REQUESTS = process.env.BLOCK_SUSPICIOUS_REQUESTS === 'true';
+function getRateLimitConfig() {
+  const config = getConfig();
+  return {
+    windowMs: config.rateLimit.windowMs,
+    maxRequests: config.rateLimit.maxRequests,
+    blockSuspicious: config.rateLimit.blockSuspicious,
+    disabled: config.rateLimit.disabled,
+  };
+}
 
 /**
  * Bot detection and user-agent validation
@@ -22,12 +26,9 @@ const SUSPICIOUS_USER_AGENTS = [
   'scraper',
   'curl',
   'wget',
-  'python',
-  'java',
-  'nodejs',
+  'python-requests',
+  'java/',
   'perl',
-  'ruby',
-  'php',
   'scan',
   'exploit',
 ];
@@ -49,8 +50,8 @@ const isSuspiciousUserAgent = (userAgent) => {
  * Prevents brute force attacks on authentication
  */
 const loginLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: RATE_LIMIT_CONFIG.MAX_REQUESTS,
+  windowMs: () => getRateLimitConfig().windowMs,
+  max: () => getRateLimitConfig().maxRequests,
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -71,7 +72,7 @@ const loginLimiter = rateLimit({
  * Prevents account enumeration and mass account creation
  */
 const registrationLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 5,
   message: 'Too many registration attempts, please try again later.',
   standardHeaders: true,
@@ -92,7 +93,7 @@ const registrationLimiter = rateLimit({
  * Prevents account takeover via reset abuse
  */
 const passwordResetLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 3,
   message: 'Too many password reset attempts, please try again later.',
   standardHeaders: true,
@@ -113,7 +114,7 @@ const passwordResetLimiter = rateLimit({
  * Prevents email verification spam and abuse
  */
 const emailVerificationLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 5,
   message: 'Too many verification requests, please try again later.',
   standardHeaders: true,
@@ -134,14 +135,15 @@ const emailVerificationLimiter = rateLimit({
  * Allows legitimate auditing while preventing DOS attacks
  */
 const auditLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 30,
   message: 'Too many audit requests, please slow down.',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.user?._id?.toString() || req.ip,
   skip: (req) => {
-    if (process.env.RATE_LIMIT_DISABLED === 'true') {
+    const config = getConfig();
+    if (config.rateLimit.disabled) {
       console.log('[RateLimit] Audit rate limiting disabled (dev mode)');
       return true;
     }
@@ -163,7 +165,7 @@ const auditLimiter = rateLimit({
  * AI API calls are expensive; strict limits prevent abuse
  */
 const aiRequestLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 10,
   message: 'Too many AI requests, please try again later.',
   standardHeaders: true,
@@ -189,7 +191,7 @@ const aiRequestLimiter = rateLimit({
  * Prevents automated scraping of reports
  */
 const downloadLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 50,
   message: 'Too many download requests, please try again later.',
   standardHeaders: true,
@@ -205,12 +207,33 @@ const downloadLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for problem reports (MODERATE)
+ * Limits: 10 reports per 15 minutes per user
+ * Prevents spam/abuse of report submission
+ */
+const reportLimiter = rateLimit({
+  windowMs: () => getRateLimitConfig().windowMs,
+  max: 10,
+  message: 'Too many report submissions, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?._id?.toString() || req.ip,
+  handler: (req, res) => {
+    console.warn('[RateLimit] Report submission blocked:', { ip: req.ip, userId: req.user?._id });
+    return res.status(429).json({
+      error: 'Too many report submissions. Please try again later.',
+      code: 'RATE_LIMIT_REPORT',
+    });
+  },
+});
+
+/**
  * Rate limiter for general API endpoints (RELAXED)
  * Limits: 100 requests per 15 minutes per IP
  * Catches remaining abuse patterns
  */
 const apiLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  windowMs: () => getRateLimitConfig().windowMs,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
@@ -246,6 +269,7 @@ const apiLimiter = rateLimit({
  */
 const suspiciousRequestDetector = (req, res, next) => {
   const userAgent = req.get('user-agent') || '';
+  const config = getConfig();
   const suspicious = {
     noUserAgent: !userAgent,
     suspiciousUserAgent: isSuspiciousUserAgent(userAgent),
@@ -260,12 +284,12 @@ const suspiciousRequestDetector = (req, res, next) => {
       userAgent,
       path: req.path,
       suspicious,
-      blocked: BLOCK_SUSPICIOUS_REQUESTS,
+      blocked: config.rateLimit.blockSuspicious,
     });
 
     req.suspicious = suspicious;
 
-    if (BLOCK_SUSPICIOUS_REQUESTS) {
+    if (config.rateLimit.blockSuspicious) {
       return res.status(403).json({
         error: 'Suspicious request blocked.',
         code: 'SUSPICIOUS_REQUEST_BLOCKED',
@@ -284,6 +308,7 @@ module.exports = {
   auditLimiter,
   aiRequestLimiter,
   downloadLimiter,
+  reportLimiter,
   apiLimiter,
   suspiciousRequestDetector,
   isSuspiciousUserAgent,

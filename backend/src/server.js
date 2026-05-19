@@ -8,43 +8,31 @@ const auditRoute = require('./routes/auditRoute');
 const authRoute = require('./routes/authRoute');
 const dashboardRoute = require('./routes/dashboardRoute');
 const notificationRoute = require('./routes/notificationRoute');
+const reportRoute = require('./routes/reportRoute');
 const { connectDB } = require('./config/db');
 const { apiLimiter, suspiciousRequestDetector } = require('./middleware/rateLimiter');
 const { sessionManager } = require('./middleware/auth');
+const { validateEnvironment, getConfig, logConfigSummary, isOriginAllowed } = require('./config/env');
+const { performHealthCheck } = require('./services/healthCheck');
+const { logger, logStartup, logSecurityEvent } = require('./lib/logger');
+const { getRequestContext } = require('./utils/security/originValidator');
 
-/**
- * Validate that required environment variables are set
- * @throws {Error} If critical environment variables are missing
- */
-const validateEnvironment = () => {
-  const requiredVars = ['MONGODB_URI'];
-  const missingVars = requiredVars.filter((v) => !process.env[v]);
-
-  if (missingVars.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missingVars.join(', ')}\nPlease check your .env file.`
-    );
-  }
-
-  // Warn about optional but recommended variables
-  const recommendedVars = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'FRONTEND_URL', 'ALLOWED_ORIGINS'];
-  const missingRecommended = recommendedVars.filter((v) => !process.env[v]);
-
-  if (missingRecommended.length > 0) {
-    console.warn(
-      `[Server] Optional security variables not configured: ${missingRecommended.join(', ')}\nSome features may not work properly.`
-    );
-  }
+// Server configuration constants - determined from validated environment
+let SERVER_CONFIG = {
+  PORT: 4000, // Will be overridden by getConfig()
+  REQUEST_TIMEOUT_MS: 10 * 60 * 1000,
+  JSON_BODY_LIMIT: '50mb', // Support large audit report downloads
+  KEEP_ALIVE_TIMEOUT_MS: 10 * 60 * 1000,
+  HEADERS_TIMEOUT_MS: 10 * 60 * 1000 + 5000,
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS: 10 * 1000,
 };
 
-// Server configuration constants
-const SERVER_CONFIG = {
-  PORT: Number(process.env.PORT) || 4000,
-  REQUEST_TIMEOUT_MS: Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000, // 10 minutes
-  JSON_BODY_LIMIT: '50mb', // Support large audit report downloads
-  KEEP_ALIVE_TIMEOUT_MS: Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000,
-  HEADERS_TIMEOUT_MS: (Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000) + 5000,
-  GRACEFUL_SHUTDOWN_TIMEOUT_MS: 10 * 1000, // 10 second force-shutdown timeout
+// Will be populated after environment validation
+let CORS_CONFIG = {
+  allowedOrigins: ['http://localhost:5173'], // Default, will be overridden
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 3600,
 };
 
 const app = express();
@@ -55,24 +43,72 @@ const app = express();
  */
 const requestTimeoutMiddleware = (req, res, next) => {
   res.setTimeout(SERVER_CONFIG.REQUEST_TIMEOUT_MS, () => {
-    console.warn('[Server] Request timeout for', req.method, req.path);
+    logger.warn({ method: req.method, path: req.path }, 'Request timeout');
     res.status(408).json({ error: 'Request timed out.' });
   });
   next();
 };
 
 /**
- * Health check endpoint
- * Returns server status, PID, uptime, and memory usage
+ * Enhanced health check endpoint
+ * Returns comprehensive application health status including database connectivity
+ * Supports both detailed and quick modes
+ * 
+ * Query params:
+ *  - detailed=true (default: comprehensive check)
+ *  - detailed=false (quick ping only)
  */
-const healthCheckHandler = (_req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    service: 'gwt-audit-backend',
-    pid: process.pid,
-    uptime: Math.round(process.uptime()),
-    memory: process.memoryUsage().rss,
-  });
+const healthCheckHandler = async (req, res) => {
+  try {
+    // Call readiness check for full diagnostics
+    const health = await performHealthCheck();
+    const statusCode = health.status === 'healthy' ? 200 : health.status === 'degraded' ? 503 : 503;
+    res.status(statusCode).json(health);
+  } catch (err) {
+    logger.error({ error: err.message, stack: err.stack }, 'Health check failed');
+    res.status(500).json({
+      status: 'unhealthy',
+      error: 'Health check failed',
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+/**
+ * Liveness probe handler
+ * Quick check that app is running (for load balancers)
+ */
+const livenessCheckHandler = async (req, res) => {
+  try {
+    const { checkLiveness } = require('./services/healthCheck');
+    const health = await checkLiveness();
+    res.status(200).json(health);
+  } catch (err) {
+    logger.error({ error: err.message }, 'Liveness check failed');
+    res.status(503).json({
+      status: 'unhealthy',
+      error: 'Liveness check failed',
+    });
+  }
+};
+
+/**
+ * Readiness probe handler
+ * Full check that app is ready for traffic (for orchestration)
+ */
+const readinessCheckHandler = async (req, res) => {
+  try {
+    const { checkReadiness } = require('./services/healthCheck');
+    const health = await checkReadiness();
+    const statusCode = health.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (err) {
+    logger.error({ error: err.message }, 'Readiness check failed');
+    res.status(503).json({
+      status: 'unhealthy',
+      error: 'Readiness check failed',
+    });
+  }
 };
 
 /**
@@ -80,7 +116,7 @@ const healthCheckHandler = (_req, res) => {
  * Catches all unhandled route errors
  */
 const errorHandler = (err, _req, res, _next) => {
-  console.error('[Server] Unhandled error:', err?.message);
+  logger.error({ error: err?.message, stack: err?.stack }, 'Unhandled error');
   res.status(err.statusCode || 500).json({
     error: err?.message || 'Internal server error.',
   });
@@ -88,6 +124,7 @@ const errorHandler = (err, _req, res, _next) => {
 
 /**
  * Setup platform middleware (CORS, body parsing, timeout, security headers)
+ * Uses validated environment configuration for CORS
  */
 const setupMiddleware = () => {
   // Security headers (helmet) - MUST come before other middleware
@@ -96,20 +133,34 @@ const setupMiddleware = () => {
   // Bot/suspicious request detection middleware
   app.use(suspiciousRequestDetector);
 
-  // CORS with secure configuration
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-    : ['http://localhost:5173'];
+  // CORS with strict configuration based on validated environment
+  // Uses callback to validate each origin request in real-time
+  app.use((req, res, next) => {
+    const corsMiddleware = cors({
+      origin: (origin, callback) => {
+        // Allow requests without origin (e.g., same-origin, mobile apps)
+        if (!origin) {
+          return callback(null, true);
+        }
 
-  app.use(
-    cors({
-      origin: allowedOrigins,
+        // Get context for security logging
+        const context = getRequestContext(req);
+        
+        // Check if origin is in allowed list (with context for logging)
+        if (isOriginAllowed(origin, context)) {
+          callback(null, true);
+        } else {
+          callback(new Error('CORS policy violation'));
+        }
+      },
       credentials: true, // Allow cookies
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-      maxAge: 3600, // Preflight cache 1 hour
-    })
-  );
+      methods: CORS_CONFIG.methods,
+      allowedHeaders: CORS_CONFIG.allowedHeaders,
+      maxAge: CORS_CONFIG.maxAge, // Preflight cache 1 hour
+      optionsSuccessStatus: 200, // For legacy browser compatibility
+    });
+    corsMiddleware(req, res, next);
+  });
 
   // Parse cookies (for httpOnly session cookies)
   app.use(cookieParser());
@@ -124,9 +175,9 @@ const setupMiddleware = () => {
   app.use('/api', apiLimiter);
 
   // Log middleware (development only)
-  if (process.env.NODE_ENV === 'development') {
+  if (getConfig().nodeEnv === 'development') {
     app.use((req, res, next) => {
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+      logger.debug({ method: req.method, path: req.path }, 'Incoming request');
       next();
     });
   }
@@ -143,8 +194,16 @@ const setupRoutes = () => {
   app.use('/api/dashboard', dashboardRoute);
   app.use('/api/audit', auditRoute);
   app.use('/api/notifications', notificationRoute);
+  app.use('/api/reports', reportRoute);
 
-  // Health check (can be public for monitoring)
+  // Health check endpoints (public for monitoring/orchestration)
+  // Liveness probe - quick app response check (for load balancers)
+  app.get('/health/live', livenessCheckHandler);
+  
+  // Readiness probe - full diagnostics check (for orchestration)
+  app.get('/health/ready', readinessCheckHandler);
+  
+  // Health endpoint - backwards compatibility (calls readiness)
   app.get('/health', healthCheckHandler);
 
   // Global error handler (must be last)
@@ -157,17 +216,20 @@ const setupRoutes = () => {
  */
 const setupGracefulShutdown = (server) => {
   const shutdown = (signal) => {
-    console.log(`[Server] ${signal} received — shutting down gracefully...`);
+    logStartup(`${signal} received - shutting down gracefully`, {
+      signal,
+      timeout: SERVER_CONFIG.GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+    });
 
     server.close(() => {
       sessionManager.stopCleanupRoutine();
-      console.log('[Server] HTTP server closed. All connections terminated.');
+      logStartup('HTTP server closed - all connections terminated', {});
       process.exit(0);
     });
 
     // Force shutdown after timeout
     setTimeout(() => {
-      console.error('[Server] Forced shutdown after timeout.');
+      logger.error({ signal }, 'Forced shutdown after graceful timeout');
       process.exit(1);
     }, SERVER_CONFIG.GRACEFUL_SHUTDOWN_TIMEOUT_MS);
   };
@@ -189,18 +251,36 @@ const setupServerTimeouts = (server) => {
  * Handle unhandled promise rejections
  */
 const setupProcessErrorHandlers = () => {
-  process.on('unhandledRejection', (reason) => {
-    console.error('[Server] Unhandled rejection in promise:', reason);
+  process.on('unhandledRejection', (reason, promise) => {
+    logSecurityEvent('UNHANDLED_REJECTION', 'Unhandled promise rejection', {
+      reason: reason?.message || String(reason),
+      stack: reason?.stack,
+    });
   });
 };
 
 /**
- * Start Express server
+ * Start Express server with validated environment configuration
  */
 async function startServer() {
   try {
-    // Validate environment first
+    // Validate environment first - will throw on validation errors
     validateEnvironment();
+    
+    // Get validated configuration
+    const config = getConfig();
+
+    // Update SERVER_CONFIG with validated values
+    SERVER_CONFIG.PORT = config.port;
+    SERVER_CONFIG.REQUEST_TIMEOUT_MS = config.serverTimeoutMs;
+    SERVER_CONFIG.KEEP_ALIVE_TIMEOUT_MS = config.serverTimeoutMs;
+    SERVER_CONFIG.HEADERS_TIMEOUT_MS = config.serverTimeoutMs + 5000;
+
+    // Update CORS_CONFIG with validated origins
+    CORS_CONFIG.allowedOrigins = config.allowedOrigins;
+
+    // Log configuration summary (masks sensitive values)
+    logConfigSummary();
 
     // Connect to database
     await connectDB();
@@ -212,9 +292,12 @@ async function startServer() {
 
     // Start listening
     const server = app.listen(SERVER_CONFIG.PORT, () => {
-      console.log(`[GWT] Backend listening on port ${SERVER_CONFIG.PORT} (PID: ${process.pid})`);
-      console.log(`[GWT] Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`[GWT] CORS Origins: ${process.env.ALLOWED_ORIGINS || 'http://localhost:5173'}`);
+      logStartup('Backend server started', {
+        port: SERVER_CONFIG.PORT,
+        pid: process.pid,
+        environment: getConfig().nodeEnv,
+        corsOrigins: config.allowedOrigins,
+      });
       // Signal PM2 the app is ready
       if (process.send) {
         process.send('ready');
@@ -225,7 +308,7 @@ async function startServer() {
     setupServerTimeouts(server);
     setupGracefulShutdown(server);
   } catch (error) {
-    console.error('[Server] Failed to start:', error.message);
+    logger.error({ error: error.message, stack: error.stack }, 'Failed to start server');
     process.exit(1);
   }
 }

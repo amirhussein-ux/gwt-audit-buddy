@@ -207,7 +207,7 @@ export default function Header() {
       </header>
 
       {/* Report Problem Modal */}
-      <ReportProblemModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} />
+      <ReportProblemModal open={reportModalOpen} onOpenChange={setReportModalOpen} />
 
       {/* Logout Confirmation Dialog */}
       <ConfirmationDialogComponent

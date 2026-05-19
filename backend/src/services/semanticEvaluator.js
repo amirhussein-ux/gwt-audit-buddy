@@ -16,8 +16,16 @@
  */
 
 const { normalizeCheck } = require('../audit/molecules/gwtChecker');
+const { getConfig } = require('../config/env');
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// Get Gemini configuration
+function getGeminiConfig() {
+  const config = getConfig();
+  return {
+    apiKey: config.gemini?.apiKey,
+    model: config.gemini?.model || 'gemini-2.0-flash',
+  };
+}
 
 // ─── N/A fallback builders ───────────────────────────────────────────────────
 function buildSemanticNaChecks(reason) {
@@ -98,7 +106,7 @@ async function captureSnapshot(page, auditedUrl) {
 
 // ─── Main evaluator ──────────────────────────────────────────────────────────
 async function runSemanticEvaluation(page, auditedUrl) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const { apiKey, model } = getGeminiConfig();
   if (!apiKey) return buildSemanticNaChecks('GEMINI_API_KEY is not configured.');
 
   let snapshot;
@@ -135,7 +143,7 @@ Homepage data:
 ${JSON.stringify(snapshot)}
 `.trim();
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   try {
     const response = await fetch(endpoint, {

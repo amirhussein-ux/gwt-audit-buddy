@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+const { getConfig } = require('../config/env');
 
 /**
  * Email service for verification and password reset emails
@@ -6,71 +8,97 @@ const nodemailer = require('nodemailer');
  */
 class EmailService {
   constructor() {
-    // Initialize transporter (lazy-loaded to handle missing config gracefully)
+    // Lazy-initialized providers
     this.transporter = null;
-    this.isConfigured = this._isConfigured();
+    this.resendClient = null;
+    this.resendUnavailable = false;
+  }
+
+  _hasResendConfig() {
+    return Boolean(getConfig().resendApiKey);
+  }
+
+  _hasSmtpConfig() {
+    return Boolean(getConfig().smtp);
+  }
+
+  _getFromAddress() {
+    const config = getConfig();
+    return config.resendFromEmail || config.smtp?.from || 'GWT Audit Buddy <noreply@resend.dev>';
+  }
+
+  _getResendClient() {
+    if (this.resendUnavailable) return null;
+    if (!this._hasResendConfig()) return null;
+    if (!this.resendClient) {
+      this.resendClient = new Resend(getConfig().resendApiKey);
+    }
+    return this.resendClient;
   }
 
   /**
-   * Check if email service is configured
-   * @returns {boolean} Whether SMTP credentials are available
-   */
-  _isConfigured() {
-    return !!(
-      process.env.SMTP_HOST &&
-      process.env.SMTP_PORT &&
-      process.env.SMTP_USER &&
-      process.env.SMTP_PASSWORD &&
-      process.env.SMTP_FROM
-    );
-  }
-
-  /**
-   * Initialize transporter (called before sending emails)
+   * Initialize SMTP transporter (fallback provider)
    * @throws {Error} If SMTP configuration is missing
    */
   _initTransporter() {
-    if (!this.isConfigured) {
+    if (!this._hasSmtpConfig()) {
       throw new Error(
         'Email service not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, and SMTP_FROM in .env'
       );
     }
 
     if (!this.transporter) {
+      const smtpConfig = getConfig().smtp;
       this.transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT,
-        secure: process.env.SMTP_PORT === '465', // Use TLS for port 465, STARTTLS for 587
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        secure: smtpConfig.port === 465,
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD,
+          user: smtpConfig.user,
+          pass: smtpConfig.password,
         },
       });
     }
+  }
+
+  async _sendEmail({ to, subject, html, text }) {
+    const from = this._getFromAddress();
+
+    const resendClient = this._getResendClient();
+    if (resendClient) {
+      try {
+        const result = await resendClient.emails.send({ from, to, subject, html, text });
+        return { provider: 'resend', result };
+      } catch (error) {
+        console.error('[EmailService] Resend send failed, falling back to SMTP if configured:', error.message);
+      }
+    }
+
+    if (this._hasSmtpConfig()) {
+      this._initTransporter();
+      const result = await this.transporter.sendMail({ from, to, subject, html, text });
+      return { provider: 'smtp', result };
+    }
+
+    console.warn('[EmailService] No email provider configured (Resend/SMTP) - skipping send');
+    return null;
   }
 
   /**
    * Send email verification link
    * @param {Object} user - User document
    * @param {string} token - Email verification token
-   * @returns {Promise<Object>} Nodemailer response
+   * @returns {Promise<Object|null>} Provider response or null when skipped
    */
   async sendEmailVerification(user, token) {
-    if (!this.isConfigured) {
-      console.warn('[EmailService] Email service not configured - skipping verification email');
-      return null;
-    }
-
     try {
-      this._initTransporter();
-
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const config = getConfig();
+      const frontendUrl = config.frontendUrl;
       const verificationUrl = `${frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(
         user.email
       )}`;
 
-      const mailOptions = {
-        from: process.env.SMTP_FROM,
+      const result = await this._sendEmail({
         to: user.email,
         subject: 'Verify Your Email - GWT Audit Buddy',
         html: `
@@ -92,10 +120,11 @@ Please verify your email by visiting: ${verificationUrl}
 
 This link will expire in 24 hours.
         `,
-      };
+      });
 
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('[EmailService] Verification email sent to', user.email);
+      if (result) {
+        console.log(`[EmailService] Verification email sent via ${result.provider} to ${user.email}`);
+      }
       return result;
     } catch (error) {
       console.error('[EmailService] Failed to send verification email:', error.message);
@@ -107,24 +136,17 @@ This link will expire in 24 hours.
    * Send password reset link
    * @param {Object} user - User document
    * @param {string} token - Password reset token
-   * @returns {Promise<Object>} Nodemailer response
+   * @returns {Promise<Object|null>} Provider response or null when skipped
    */
   async sendPasswordReset(user, token) {
-    if (!this.isConfigured) {
-      console.warn('[EmailService] Email service not configured - skipping password reset email');
-      return null;
-    }
-
     try {
-      this._initTransporter();
-
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const config = getConfig();
+      const frontendUrl = config.frontendUrl;
       const resetUrl = `${frontendUrl}/reset-password?token=${token}&email=${encodeURIComponent(
         user.email
       )}`;
 
-      const mailOptions = {
-        from: process.env.SMTP_FROM,
+      const result = await this._sendEmail({
         to: user.email,
         subject: 'Password Reset Request - GWT Audit Buddy',
         html: `
@@ -146,10 +168,11 @@ Click the link to reset your password: ${resetUrl}
 
 This link will expire in 15 minutes.
         `,
-      };
+      });
 
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('[EmailService] Password reset email sent to', user.email);
+      if (result) {
+        console.log(`[EmailService] Password reset email sent via ${result.provider} to ${user.email}`);
+      }
       return result;
     } catch (error) {
       console.error('[EmailService] Failed to send password reset email:', error.message);
@@ -161,19 +184,11 @@ This link will expire in 15 minutes.
    * Send account locked notification
    * @param {Object} user - User document
    * @param {number} lockDurationMinutes - How long account is locked
-   * @returns {Promise<Object>} Nodemailer response
+   * @returns {Promise<Object|null>} Provider response or null when skipped
    */
   async sendAccountLockedNotification(user, lockDurationMinutes) {
-    if (!this.isConfigured) {
-      console.warn('[EmailService] Email service not configured - skipping account locked notification');
-      return null;
-    }
-
     try {
-      this._initTransporter();
-
-      const mailOptions = {
-        from: process.env.SMTP_FROM,
+      const result = await this._sendEmail({
         to: user.email,
         subject: 'Account Security Alert - GWT Audit Buddy',
         html: `
@@ -188,10 +203,11 @@ This link will expire in 15 minutes.
 Your account has been temporarily locked due to multiple failed login attempts.
 It will be unlocked in ${lockDurationMinutes} minutes.
         `,
-      };
+      });
 
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('[EmailService] Account locked notification sent to', user.email);
+      if (result) {
+        console.log(`[EmailService] Account locked notification sent via ${result.provider} to ${user.email}`);
+      }
       return result;
     } catch (error) {
       console.error('[EmailService] Failed to send account locked notification:', error.message);

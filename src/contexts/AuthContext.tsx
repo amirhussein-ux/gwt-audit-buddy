@@ -219,9 +219,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('[Auth] Logout error:', error);
     } finally {
-      // Clear local state and user-specific storage
+      // Clear all user-specific storage to prevent data leakage to next user
       localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
-      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT); // Clear audit result from Dashboard
+      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT);
+      // Also clear Dashboard-specific audit state keys
+      localStorage.removeItem('activeAudit');
+      localStorage.removeItem('auditSteps');
+      localStorage.removeItem('completedAudit');
       setToken(null);
       setUser(null);
       setIsLoading(false);

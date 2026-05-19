@@ -795,7 +795,7 @@ router.put('/profile', authenticate, async (req, res) => {
 
     await user.save();
 
-    const activeSession = sessionManager.getSession(req.user.token);
+    const activeSession = await sessionManager.getSession(req.user.token);
     if (activeSession) {
       activeSession.username = user.username;
     }

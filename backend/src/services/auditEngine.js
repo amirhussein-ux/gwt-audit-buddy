@@ -173,10 +173,10 @@ async function auditOnePage(page, target, origin, homepageUrl) {
     try {
       debugLog('Starting accessibility scan', { url: target });
       const axePromise = runAccessibilityScan(page, {});
-      const timeoutPromise = new Promise((_, reject) => 
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Accessibility scan timeout after 20s')), 20000)
       );
-      const axeResults = await Promise.race([axePromise, timeoutPromise]);
+      await Promise.race([axePromise, timeoutPromise]);
       debugLog('Accessibility scan completed', { url: target });
     } catch (e) {
       debugLog('Accessibility scan failed', { error: e.message });
@@ -253,12 +253,13 @@ async function checkCustom404(context, notFoundUrl) {
       const hasMasthead = await page.evaluate(() => {
         return Boolean(document.querySelector('header, [role="banner"], nav, .navbar, .masthead, .pst'));
       });
-      
+
       const hasFooter = await page.evaluate(() => {
         return Boolean(document.querySelector('footer, [role="contentinfo"], .footer'));
       });
-      
-      const sameOrigin = true; // We're checking the same origin
+
+      // The 404 check URL is always on the same origin as the audit target
+      const sameOrigin = true;
       
       debugLog('404 page analysis', { 
         status: responseStatus,

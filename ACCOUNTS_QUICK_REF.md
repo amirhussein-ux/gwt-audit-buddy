@@ -49,7 +49,7 @@ When manually creating accounts, include these fields:
   "hashedPassword": "hashed_value",    // Will be hashed if plain text
   "role": "admin|auditor|viewer",      // User role
   "isActive": true,                     // Account status
-  "isEmailVerified": true,              // Email verification status
+  "isEmailVerified": true,              // Email verification status 
   "createdAt": ISODate(),               // Account creation timestamp
   "updatedAt": ISODate()                // Last update timestamp
 }
@@ -111,7 +111,7 @@ See [SECURITY_REFACTORING_COMPLETE.md](SECURITY_REFACTORING_COMPLETE.md) for aut
 ```bash
 curl -X POST http://localhost:4000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"auditor1","password":"changeme123"}'
+  -d '{"username":"auditor1","password":"<your_password>"}'
 ```
 
 ### Verify Token
