@@ -4,11 +4,10 @@ import AuditCompletionModal from '@/components/AuditCompletionModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-<<<<<<< HEAD
+
 import { Clock, AlertCircle, Search, CheckCircle } from 'lucide-react';
-=======
-import { CheckCircle, Clock, AlertCircle, Search } from 'lucide-react';
->>>>>>> 2211e52 (WIP: save local changes before rebase)
+
+
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
