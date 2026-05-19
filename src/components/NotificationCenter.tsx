@@ -25,7 +25,7 @@ const getRelativeTime = (date: string) => {
 };
 
 const NotificationCenter = () => {
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [markAllConfirmationOpen, setMarkAllConfirmationOpen] = useState(false);
@@ -58,6 +58,10 @@ const NotificationCenter = () => {
         }
       );
 
+      if (response.status === 401) {
+        await logout();
+        throw new Error('Session expired. Please sign in again.');
+      }
       if (!response.ok) throw new Error('Failed to fetch notifications');
 
       const raw = await response.json().catch(() => ({}));
@@ -69,6 +73,12 @@ const NotificationCenter = () => {
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
     refetchInterval: 10000,
     staleTime: 5000,
+    retry: (failureCount, err) => {
+      if (err instanceof Error && err.message.includes('Session expired')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   const {
@@ -84,6 +94,10 @@ const NotificationCenter = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      if (response.status === 401) {
+        await logout();
+        throw new Error('Session expired. Please sign in again.');
+      }
       if (!response.ok) throw new Error('Failed to fetch unread count');
 
       const raw = await response.json().catch(() => ({}));
@@ -95,6 +109,12 @@ const NotificationCenter = () => {
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
     refetchInterval: 10000,
     staleTime: 5000,
+    retry: (failureCount, err) => {
+      if (err instanceof Error && err.message.includes('Session expired')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   useEffect(() => {

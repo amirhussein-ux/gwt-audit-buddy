@@ -162,7 +162,7 @@ const ColorLegendItem = ({ color, label }: { color: string; label: string }) => 
 );
 
 export const ComplianceTrendChart = () => {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const { toast } = useToast();
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [selectedRange, setSelectedRange] = useState<string>('quarterly');
@@ -175,10 +175,20 @@ export const ComplianceTrendChart = () => {
       const response = await fetch(`${API_BASE}/dashboard/compliance-trend?days=${selectedTimeRange.days}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (response.status === 401) {
+        await logout();
+        throw new Error('Session expired. Please sign in again.');
+      }
       if (!response.ok) throw new Error('Failed to fetch compliance trend');
       return response.json().catch(() => ({ data: {}, period: selectedRange })) as Promise<ComplianceScoreData>;
     },
     enabled: !!token,
+    retry: (failureCount, err) => {
+      if (err instanceof Error && err.message.includes('Session expired')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   if (isLoading) {
