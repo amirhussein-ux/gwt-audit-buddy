@@ -181,16 +181,35 @@ export const mapAuditResponseToUiModel = (data: AuditDetailData): AuditDetailUiM
 export const parseAuditDetailResponse = (payload: unknown): ParseResult<AuditDetailData> => {
   const parsed = AuditDetailDataSchema.safeParse(payload);
 
-  if (!parsed.success) {
+  if (parsed.success) {
     return {
-      ok: false,
-      error: 'Invalid audit detail payload',
-      issues: parsed.error.issues,
+      ok: true,
+      data: parsed.data,
     };
   }
 
+  // Backward/forward compatibility fallback:
+  // Some stored audits contain partial/legacy shapes that fail strict zod checks
+  // (for example, sparse page rows or non-enum check statuses). If we still have
+  // the top-level audit object, allow rendering and let mapper normalize fields.
+  if (payload && typeof payload === 'object') {
+    const candidate = payload as Record<string, unknown>;
+    if (candidate.audit && typeof candidate.audit === 'object') {
+      const compatible: AuditDetailData = {
+        audit: candidate.audit as AuditDetailData['audit'],
+        compliance: (candidate.compliance as AuditDetailData['compliance']) ?? null,
+        uiReport: (candidate.uiReport as AuditDetailData['uiReport']) ?? undefined,
+      };
+      return {
+        ok: true,
+        data: compatible,
+      };
+    }
+  }
+
   return {
-    ok: true,
-    data: parsed.data,
+    ok: false,
+    error: 'Invalid audit detail payload',
+    issues: parsed.error.issues,
   };
 };

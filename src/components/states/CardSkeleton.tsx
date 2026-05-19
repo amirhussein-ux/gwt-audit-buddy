@@ -70,9 +70,13 @@ export function CardSkeleton({
         <CardTitle className="text-base font-bold text-slate-900">
           {title ?? <Skeleton className="h-6 w-32 bg-slate-200/80" />}
         </CardTitle>
-        <CardDescription className="mt-1 text-xs leading-relaxed">
-          {description ?? <Skeleton className="h-4 w-52 bg-slate-200/70" />}
-        </CardDescription>
+        {description ? (
+          <CardDescription className="mt-1 text-xs leading-relaxed">{description}</CardDescription>
+        ) : (
+          <div className="mt-1">
+            <Skeleton className="h-4 w-52 bg-slate-200/70" />
+          </div>
+        )}
       </CardHeader>
       <CardContent>{renderBody()}</CardContent>
     </Card>

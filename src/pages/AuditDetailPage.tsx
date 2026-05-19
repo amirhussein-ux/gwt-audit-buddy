@@ -117,6 +117,16 @@ interface AuditDetailData {
   uiReport?: UIReport | null;
 }
 
+class AuditDetailError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'AuditDetailError';
+    this.status = status;
+  }
+}
+
 const StatusIcon = ({ found }: { found: boolean }) => {
   return found ? (
     <CheckCircle className="h-5 w-5 text-green-600" />
@@ -158,7 +168,7 @@ export default function AuditDetailPage() {
           typeof payload.error === 'string'
             ? payload.error
             : 'Failed to fetch audit details';
-        throw new Error(message);
+        throw new AuditDetailError(message, response.status);
       }
 
       const parsed = parseAuditDetailResponse(payload);
@@ -172,6 +182,11 @@ export default function AuditDetailPage() {
     staleTime: AUDIT_DETAIL_CONFIG.QUERY.STALE_TIME,
     gcTime: AUDIT_DETAIL_CONFIG.QUERY.GC_TIME,
     refetchInterval: (query) => {
+      // Stop polling when request is already in an error state (e.g. 403/404).
+      if (query.state.error) {
+        return false;
+      }
+
       // Poll every 2 seconds while data is still loading/empty
       const checksCount =
         query.state.data?.audit?.auditResults?.checks?.length ??
@@ -185,6 +200,14 @@ export default function AuditDetailPage() {
         auditStatus === 'failed' ||
         auditStatus === 'cancelled';
       return hasValidData ? false : AUDIT_DETAIL_CONFIG.QUERY.POLL_INTERVAL;
+    },
+    retry: (failureCount, err) => {
+      const status = err instanceof AuditDetailError ? err.status : undefined;
+      // Permission/not found should not be retried.
+      if (status === 403 || status === 404) {
+        return false;
+      }
+      return failureCount < 2;
     },
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true, // Refetch when returning to window
@@ -208,7 +231,13 @@ export default function AuditDetailPage() {
         </Button>
         <ErrorState
           title="Audit details are unavailable"
-          description={error instanceof Error ? error.message : 'Please try loading this audit again.'}
+          description={
+            error instanceof AuditDetailError && error.status === 403
+              ? 'You do not have permission to access this audit. Open it from your own Results list or sign in as an admin.'
+              : error instanceof Error
+                ? error.message
+                : 'Please try loading this audit again.'
+          }
           onRetry={() => void refetch()}
           retryLabel={isFetching ? 'Retrying...' : 'Retry audit details'}
           isRetrying={isFetching}
