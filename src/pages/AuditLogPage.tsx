@@ -203,6 +203,7 @@ export default function AuditLogPage() {
     switch (status) {
       case 'completed':
       case 'success':
+      case 'partial':
         return <CheckCircle className="h-5 w-5 text-emerald-600" />;
       case 'in-progress':
       case 'in_progress':
@@ -343,17 +344,17 @@ export default function AuditLogPage() {
                               <div className="flex items-center gap-2">
                                 {getStatusIcon(statusValue)}
                                 <Badge
-                                  variant={statusValue === 'success' || statusValue === 'completed' ? 'default' : 'secondary'}
+                                  variant={statusValue === 'success' || statusValue === 'completed' || statusValue === 'partial' ? 'default' : 'secondary'}
                                   className={cn(
                                     'rounded-full text-xs',
-                                    statusValue === 'success' || statusValue === 'completed'
+                                    statusValue === 'success' || statusValue === 'completed' || statusValue === 'partial'
                                       ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
                                       : statusValue === 'failed' || statusValue === 'cancelled'
                                         ? 'bg-rose-100 text-rose-700 hover:bg-rose-100'
                                         : 'bg-sky-100 text-sky-700 hover:bg-sky-100'
                                   )}
                                 >
-                                  {statusValue === 'success' ? 'Completed' : statusValue.replace('_', ' ')}
+                                  {statusValue === 'success' || statusValue === 'partial' ? (statusValue === 'partial' ? 'Partial' : 'Completed') : statusValue.replace('_', ' ')}
                                 </Badge>
                               </div>
                             </td>

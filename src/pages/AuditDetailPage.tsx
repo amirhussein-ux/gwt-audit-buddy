@@ -197,6 +197,7 @@ export default function AuditDetailPage() {
         checksCount > AUDIT_DETAIL_CONFIG.QUERY.MIN_CHECKS_FOR_COMPLETION ||
         auditStatus === 'success' ||
         auditStatus === 'completed' ||
+        auditStatus === 'partial' ||
         auditStatus === 'failed' ||
         auditStatus === 'cancelled';
       return hasValidData ? false : AUDIT_DETAIL_CONFIG.QUERY.POLL_INTERVAL;

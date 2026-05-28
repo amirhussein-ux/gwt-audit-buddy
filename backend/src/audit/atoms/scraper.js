@@ -55,6 +55,8 @@ async function createSharedContext() {
       '--disable-popup-blocking',
       '--disable-prompt-on-repost',
       '--no-proxy-server',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
     ],
   });
   const context = await browser.newContext(BROWSER_CONTEXT_OPTIONS);
@@ -157,6 +159,8 @@ async function scrapePage(targetUrl, options = {}) {
       '--disable-popup-blocking',
       '--disable-prompt-on-repost',
       '--no-proxy-server',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
     ],
   });
   const context = await browser.newContext(BROWSER_CONTEXT_OPTIONS);

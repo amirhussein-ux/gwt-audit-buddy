@@ -404,9 +404,9 @@ const buildComplianceScoreData = (uiReport) => {
  * @param {number} auditDurationMs - Audit duration in milliseconds
  * @returns {Object} Data to update audit log
  */
-const buildAuditLogUpdateData = (auditResults, uiReport, auditDurationMs) => {
+const buildAuditLogUpdateData = (auditResults, uiReport, auditDurationMs, status = 'success', auditWarnings = []) => {
   return {
-    status: 'success',
+    status,
     pst: {
       found: auditResults.checks?.some((c) => c.key === 'presence.pst' && c.status === 'Pass') || false,
     },
@@ -423,6 +423,7 @@ const buildAuditLogUpdateData = (auditResults, uiReport, auditDurationMs) => {
     },
     auditResults,
     uiReport,
+    notes: auditWarnings.length > 0 ? auditWarnings.join(' ') : undefined,
     crawledPages: (auditResults.pageAudits || auditResults.crawledPages || []).map((p) => ({
       url: p.url,
       status: p.status || 200,
@@ -462,17 +463,18 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
       crawlSummary: auditResults.crawlSummary,
     });
 
-    // Check for crawl failures (no checks generated or very few pages crawled)
+    // Preserve degraded runs instead of failing the entire audit.
+    const auditWarnings = [];
     if (!auditResults.checks || auditResults.checks.length === 0) {
-      const errorMsg = 'Crawl completed but no checks were generated. This may indicate a website accessibility issue.';
-      console.warn('[Background] WARNING:', errorMsg);
-      throw new Error(errorMsg);
+      auditWarnings.push(
+        'Crawl completed but no checks were generated. The website may be blocking automation or returning an unsupported layout.'
+      );
     }
 
     if (!auditResults.crawledPages || auditResults.crawledPages.length === 0) {
-      const errorMsg = 'Crawl failed: No pages were successfully crawled from the target URL.';
-      console.warn('[Background] WARNING:', errorMsg);
-      throw new Error(errorMsg);
+      auditWarnings.push(
+        'No pages were successfully crawled from the target URL. The audit was saved as partial.'
+      );
     }
 
     // Generate UI report
@@ -487,7 +489,8 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
 
     // Build and store audit results
     const auditDurationMs = Date.now() - startTime;
-    const updateData = buildAuditLogUpdateData(auditResults, uiReport, auditDurationMs);
+    const auditStatus = auditWarnings.length > 0 ? 'partial' : 'success';
+    const updateData = buildAuditLogUpdateData(auditResults, uiReport, auditDurationMs, auditStatus, auditWarnings);
 
     console.log('[Background] Storing audit results', {
       checksCount: updateData.auditResults?.checks?.length,
@@ -518,6 +521,7 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
       checksStored: updatedAuditLog.auditResults?.checks?.length,
       pagesStored: updatedAuditLog.crawledPages?.length,
       status: updatedAuditLog.status,
+      warnings: auditWarnings.length,
     });
 
     // Save compliance score if agency exists

@@ -150,7 +150,7 @@ export default function ResultsPage() {
 
   const getStatusGroup = (status: string) => {
     const normalizedStatus = status.toLowerCase();
-    if (normalizedStatus === 'success' || normalizedStatus === 'completed') return 'success';
+    if (normalizedStatus === 'success' || normalizedStatus === 'completed' || normalizedStatus === 'partial') return 'success';
     if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled') return 'cancelled';
     if (normalizedStatus === 'failed') return 'failed';
     return normalizedStatus;
@@ -415,15 +415,15 @@ export default function ResultsPage() {
                           </div>
                         </div>
                         <Badge
-                          variant={audit.status === 'completed' ? 'default' : 'secondary'}
+                          variant={audit.status === 'completed' || audit.status === 'partial' ? 'default' : 'secondary'}
                           className={cn(
                             'rounded-full',
-                            audit.status === 'completed' || audit.status === 'success'
+                            audit.status === 'completed' || audit.status === 'success' || audit.status === 'partial'
                               ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-100'
                           )}
                         >
-                          {audit.status}
+                          {audit.status === 'partial' ? 'partial' : audit.status}
                         </Badge>
                       </div>
                     </CardHeader>

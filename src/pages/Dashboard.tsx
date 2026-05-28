@@ -49,7 +49,7 @@ const DASHBOARD_CONFIG = {
     COMPLETED_AUDIT: 'completedAudit',
   },
   AUDIT_POLLING: {
-    MAX_TOTAL_TIME_MS: 1000 * 1000,
+    MAX_TOTAL_TIME_MS: 2 * 60 * 60 * 1000,
   },
 };
 
@@ -541,9 +541,16 @@ export default function Dashboard() {
             setCancellationStateSynced('idle');
           }
 
-          if (auditStatus === 'success') {
+          if (auditStatus === 'success' || auditStatus === 'partial') {
             auditComplete = true;
             setCancellationStateSynced('idle');
+            if (auditStatus === 'partial') {
+              toast({
+                title: 'Audit completed with partial results',
+                description:
+                  'The audit finished, but some pages or checks could not be collected. You can still review the available results.',
+              });
+            }
           } else if (auditStatus === 'failed') {
             throw new Error(auditData.audit?.error || 'Audit failed on server');
           } else if (auditStatus === 'cancelled') {

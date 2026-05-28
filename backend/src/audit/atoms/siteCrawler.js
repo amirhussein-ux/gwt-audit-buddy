@@ -220,6 +220,8 @@ async function crawlSiteUrls(startUrl, options = {}) {
         '--disable-popup-blocking',
         '--disable-prompt-on-repost',
         '--no-proxy-server',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
       ],
     });
     context = await browser.newContext({ ignoreHTTPSErrors: true });
