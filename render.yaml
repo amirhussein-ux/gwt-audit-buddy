@@ -29,10 +29,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "3000"
       - key: MONGODB_URI
         sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://tsekify-frontend.onrender.com
+      - key: FRONTEND_URL
+        value: https://tsekify-frontend.onrender.com
       - key: SESSION_SECRET
         generateValue: true
       - key: JWT_SECRET

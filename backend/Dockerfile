@@ -66,9 +66,8 @@ RUN useradd --create-home --shell /bin/bash appuser \
 
 USER appuser
 
-ENV PORT=3000
 ENV NODE_ENV=production
 
-EXPOSE 3000
+EXPOSE 10000
 
 CMD ["node", "/app/src/server.js"]

@@ -304,7 +304,7 @@ async function startServer() {
     setupProcessErrorHandlers();
 
     // Start listening
-    const server = app.listen(SERVER_CONFIG.PORT, () => {
+    const server = app.listen(SERVER_CONFIG.PORT, '0.0.0.0', () => {
       logStartup('Backend server started', {
         port: SERVER_CONFIG.PORT,
         pid: process.pid,
