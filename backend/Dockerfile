@@ -27,6 +27,7 @@ WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci --omit=dev
+RUN npm install playwright @playwright/test --no-save
 RUN npx playwright install chromium --with-deps
 
 COPY . .
