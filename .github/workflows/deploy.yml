@@ -1,6 +1,9 @@
 name: Deploy
 
 on:
+permissions:
+  contents: read
+  packages: write
   push:
     branches:
       - main
