@@ -1,12 +1,13 @@
 name: Deploy
 
 on:
-permissions:
-  contents: read
-  packages: write
   push:
     branches:
       - main
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   deploy-frontend:
