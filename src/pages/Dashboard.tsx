@@ -50,6 +50,9 @@ const DASHBOARD_CONFIG = {
   },
   AUDIT_POLLING: {
     MAX_TOTAL_TIME_MS: 2 * 60 * 60 * 1000,
+    INITIAL_INTERVAL_MS: 3000,
+    MAX_INTERVAL_MS: 10000,
+    STEP_ADVANCE_MS: 15000,
   },
 };
 
@@ -152,6 +155,8 @@ export default function Dashboard() {
   const [reportSelectionEnabled, setReportSelectionEnabled] = useState(false);
   const [selectedReportIds, setSelectedReportIds] = useState<string[]>([]);
   const [isExportingReports, setIsExportingReports] = useState(false);
+  const auditPollingAbortRef = useRef<AbortController | null>(null);
+  const lastProgressStepRef = useRef<number>(0);
   const [steps, setSteps] = useState<AuditProgressStep[]>(
     AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' }))
   );
@@ -185,7 +190,7 @@ export default function Dashboard() {
       throw new Error((parsed as { ok: false; error: string }).error);
     },
     enabled: !!token,
-    refetchInterval: 30000,
+    refetchInterval: isRunning ? false : 30000,
     refetchOnWindowFocus: false,
   });
 
@@ -447,6 +452,7 @@ export default function Dashboard() {
   };
 
   const finalizeCancelledAuditUi = () => {
+    auditPollingAbortRef.current?.abort();
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
     setActiveAuditId(null);
@@ -454,6 +460,7 @@ export default function Dashboard() {
       setIsRunning(false);
       setSteps(AUDIT_STEPS.map((step) => ({ ...step, status: 'pending' })));
       setCancellationStateSynced('idle');
+      lastProgressStepRef.current = 0;
     }, 2200);
   };
 
@@ -467,6 +474,7 @@ export default function Dashboard() {
     setAuditError(null);
     setCancellationStateSynced('idle');
     setIsRunning(true);
+    lastProgressStepRef.current = 0;
     setSteps((prev) => prev.map((step) => ({ ...step, status: step.id === 'fetch' ? 'running' : 'pending' })));
 
     try {
@@ -514,18 +522,57 @@ export default function Dashboard() {
 
   const pollAuditCompletion = async (auditLogId: string, authToken: string, originalStartTime?: number) => {
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+    auditPollingAbortRef.current?.abort();
+    const controller = new AbortController();
+    auditPollingAbortRef.current = controller;
     let auditComplete = false;
-    let pollCount = 0;
-    let pollInterval = 1000;
-    const maxPollInterval = 3000;
+    let pollInterval = DASHBOARD_CONFIG.AUDIT_POLLING.INITIAL_INTERVAL_MS;
+    const maxPollInterval = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_INTERVAL_MS;
     const maxTotalTime = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_TOTAL_TIME_MS;
     let elapsedTime = 0;
     const startTime = originalStartTime || Date.now();
 
+    const updateProgressSteps = (nextIndex: number) => {
+      const clampedIndex = Math.max(0, Math.min(nextIndex, AUDIT_STEPS.length - 1));
+      if (clampedIndex === lastProgressStepRef.current) {
+        return;
+      }
+
+      lastProgressStepRef.current = clampedIndex;
+      setSteps((prev) => {
+        const updated = prev.map((step, idx) => {
+          if (idx < clampedIndex) return { ...step, status: 'done' as const };
+          if (idx === clampedIndex) return { ...step, status: 'running' as const };
+          return { ...step, status: 'pending' as const };
+        });
+        localStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS, JSON.stringify(updated));
+        return updated;
+      });
+    };
+
+    const wait = (ms: number) =>
+      new Promise<void>((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => resolve(), ms);
+        controller.signal.addEventListener(
+          'abort',
+          () => {
+            window.clearTimeout(timeoutId);
+            reject(new Error('Audit polling aborted'));
+          },
+          { once: true }
+        );
+      });
+
     while (!auditComplete && elapsedTime < maxTotalTime) {
+      if (controller.signal.aborted) {
+        return;
+      }
+
       try {
         const checkResponse = await fetch(`${API_BASE}/audit/${auditLogId}`, {
           headers: { Authorization: `Bearer ${authToken}` },
+          cache: 'no-store',
+          signal: controller.signal,
         });
 
         if (checkResponse.ok) {
@@ -552,32 +599,36 @@ export default function Dashboard() {
               });
             }
           } else if (auditStatus === 'failed') {
-            throw new Error(auditData.audit?.error || 'Audit failed on server');
+            const failureMessage = auditData.audit?.error || 'Audit failed on server';
+            setAuditError(failureMessage);
+            setSteps((prev) => prev.map((step) => (step.status === 'running' ? { ...step, status: 'failed' } : step)));
+            auditComplete = true;
+            setIsRunning(false);
+            setCancellationStateSynced('idle');
+            localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+            localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+            return;
           } else if (auditStatus === 'cancelled') {
             setCancellationStateSynced('complete');
             finalizeCancelledAuditUi();
             return;
           } else {
-            const progressPercent = Math.min((elapsedTime / 60000) * 100, 95);
-            const stepIndex = Math.floor((progressPercent / 100) * (AUDIT_STEPS.length - 1));
-
-            setSteps((prev) => {
-              const updated = prev.map((step, idx) => {
-                if (idx < stepIndex) return { ...step, status: 'done' as const };
-                if (idx === stepIndex) return { ...step, status: 'running' as const };
-                return { ...step, status: 'pending' as const };
-              });
-              localStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS, JSON.stringify(updated));
-              return updated;
-            });
+            const stepIndex = Math.min(
+              Math.floor(elapsedTime / DASHBOARD_CONFIG.AUDIT_POLLING.STEP_ADVANCE_MS),
+              AUDIT_STEPS.length - 1
+            );
+            updateProgressSteps(stepIndex);
           }
         }
 
-        pollCount += 1;
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        await wait(pollInterval);
         pollInterval = Math.min(pollInterval + 500, maxPollInterval);
         elapsedTime = Date.now() - startTime;
       } catch (pollError) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
         if (
           pollError instanceof Error &&
           (pollError.message.includes('failed') || pollError.message.includes('cancelled'))
@@ -609,6 +660,7 @@ export default function Dashboard() {
     localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
     setIsRunning(false);
     setCancellationStateSynced('idle');
+    lastProgressStepRef.current = AUDIT_STEPS.length - 1;
   };
 
   useEffect(() => {
@@ -631,6 +683,9 @@ export default function Dashboard() {
     };
 
     resumePolling();
+    return () => {
+      auditPollingAbortRef.current?.abort();
+    };
   }, [activeAuditId, token]);
 
   const handleViewResults = () => {
@@ -668,9 +723,21 @@ export default function Dashboard() {
         throw new Error(error.error || `Server error: ${response.status}`);
       }
 
-      setCancellationStateSynced('in_progress');
-      setAuditError(null);
       setCancelConfirmationOpen(false);
+      const responseData = await response.json().catch(() => ({}));
+      const cancelledStatus = responseData?.audit?.status;
+
+      if (cancelledStatus === 'in_progress' || responseData?.message?.includes('in progress')) {
+        setCancellationStateSynced('in_progress');
+        setAuditError(null);
+      } else {
+        setCancellationStateSynced('idle');
+        if (cancelledStatus && cancelledStatus !== 'cancelled') {
+          setAuditError(`Audit already finished with status: ${cancelledStatus}`);
+        } else {
+          setAuditError(null);
+        }
+      }
     } catch (cancelError) {
       const errorMsg = cancelError instanceof Error ? cancelError.message : 'Failed to cancel audit';
       setAuditError(`Cancel failed: ${errorMsg}`);

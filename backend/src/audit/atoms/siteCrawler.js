@@ -189,7 +189,8 @@ async function crawlSiteUrls(startUrl, options = {}) {
   const maxPages   = Number(options.maxPages)   > 0 ? Number(options.maxPages)   : 20;
   const maxDepth   = Number(options.maxDepth)  >= 0 ? Number(options.maxDepth)   : 3;
   const timeoutMs  = Number(options.timeoutMs)  > 0 ? Number(options.timeoutMs)  : 18000;
-  const concurrency = Math.min(Number(options.concurrency) > 0 ? Number(options.concurrency) : 3, 5);
+  const concurrencyCap = process.env.NODE_ENV === 'production' ? 2 : 5;
+  const concurrency = Math.min(Number(options.concurrency) > 0 ? Number(options.concurrency) : 3, concurrencyCap);
 
   const parsedStart = new URL(startUrl);
   const origin = parsedStart.origin;

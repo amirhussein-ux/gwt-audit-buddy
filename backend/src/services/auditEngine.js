@@ -84,23 +84,28 @@ function validateTargetUrl(url) {
 }
 
 function parseCrawlOptions(options = {}) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const maxPagesCap = isProduction ? 15 : 50;
+  const maxDepthCap = isProduction ? 2 : 3;
+  const concurrencyCap = isProduction ? 2 : 5;
+
   // Validate and bound maxPages (prevent DoS through resource exhaustion)
   const requestedMaxPages = Number(options.maxPages);
   const boundedMaxPages   = Number.isFinite(requestedMaxPages) && requestedMaxPages > 0
-    ? Math.max(5, Math.min(50, requestedMaxPages))
-    : 20;
+    ? Math.max(5, Math.min(maxPagesCap, requestedMaxPages))
+    : Math.min(10, maxPagesCap);
 
   // Validate and bound maxDepth (prevent infinite recursion)
   const requestedMaxDepth = Number(options.maxDepth);
   const boundedMaxDepth = Number.isFinite(requestedMaxDepth) && requestedMaxDepth >= 0
-    ? Math.max(0, Math.min(3, requestedMaxDepth))
-    : 2;
+    ? Math.max(0, Math.min(maxDepthCap, requestedMaxDepth))
+    : Math.min(2, maxDepthCap);
 
   // Validate and bound concurrency (prevent thread exhaustion)
   const requestedConcurrency = Number(options.concurrency);
   const boundedConcurrency = Number.isFinite(requestedConcurrency) && requestedConcurrency > 0
-    ? Math.max(1, Math.min(10, requestedConcurrency))
-    : 3;
+    ? Math.max(1, Math.min(concurrencyCap, requestedConcurrency))
+    : Math.min(2, concurrencyCap);
 
   debugLog('Parsed crawl options with validation', {
     requestedMaxPages,
@@ -394,7 +399,11 @@ async function runAudit(targetUrl, options = {}) {
 
     // Collect performance trials on homepage
     debugLog('Collecting performance trials', { url: targetUrl });
-    const performanceTrials = await collectPerformanceTrials(shared.context, targetUrl, 3);
+    const performanceTrials = await collectPerformanceTrials(
+      shared.context,
+      targetUrl,
+      process.env.NODE_ENV === 'production' ? 2 : 3
+    );
     const performanceCheck = buildPerformanceCheckFromTrials(performanceTrials);
     allChecks.unshift(performanceCheck); // Add performance check at the beginning
 

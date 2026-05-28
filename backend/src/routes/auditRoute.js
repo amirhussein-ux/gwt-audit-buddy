@@ -730,8 +730,10 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     }
 
     if (auditLog.status !== 'in_progress') {
-      return res.status(400).json({
-        error: `Cannot cancel audit with status: ${auditLog.status}`,
+      return res.status(200).json({
+        success: true,
+        message: `Audit already finished with status: ${auditLog.status}`,
+        audit: auditLog,
       });
     }
 
