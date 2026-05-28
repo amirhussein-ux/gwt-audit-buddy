@@ -36,6 +36,19 @@ let CORS_CONFIG = {
 };
 
 const app = express();
+app.set('etag', false);
+
+/**
+ * Prevent conditional caching on API responses.
+ * Browser/edge cache revalidation can surface as 304 responses, which this app
+ * currently treats as fetch failures for authenticated JSON endpoints.
+ */
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 /**
  * Request timeout middleware
