@@ -25,15 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY backend/package*.json ./
 RUN npm ci --omit=dev
 RUN npm install playwright @playwright/test --no-save
 RUN npx playwright install chromium --with-deps
 
-COPY . .
-
-# Verify server.js is where we expect it
-RUN ls -la /app/src/server.js
+COPY backend/ .
 
 FROM node:20-slim AS runner
 
