@@ -145,6 +145,15 @@ const auditLogSchema = new mongoose.Schema(
     },
 
     /**
+     * Error details for failed audits
+     */
+    error: {
+      type: String,
+      default: null,
+      description: 'Failure reason captured when an audit cannot complete',
+    },
+
+    /**
      * UI Report (calculated summary with scores and percentages)
      */
     uiReport: {

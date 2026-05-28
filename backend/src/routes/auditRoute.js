@@ -185,7 +185,7 @@ const deriveCurrentStage = (s1, s2, s3, s4) => {
  * Query params: ?skip=0&limit=50&status=success
  * ABUSE PROTECTION: Rate limited to prevent DOS attacks and scraping
  */
-router.get('/', authenticate, auditLimiter, async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const { skip = AUDIT_CONFIG.PAGINATION_DEFAULTS.skip, limit = AUDIT_CONFIG.PAGINATION_DEFAULTS.limit, status } = req.query;
     // Match non-archived audits (isArchived = false or doesn't exist)
@@ -555,7 +555,7 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
  * GET /audit/:id
  * Retrieve specific audit log with all details
  */
-router.get('/:id', authenticate, auditLimiter, async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
 
