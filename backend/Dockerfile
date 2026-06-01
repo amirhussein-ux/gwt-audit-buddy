@@ -24,10 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY backend/package*.json ./
 RUN npm ci --omit=dev
-RUN npm install playwright @playwright/test --no-save
 RUN npx playwright install chromium --with-deps
 
 COPY backend/ .
@@ -59,13 +59,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=deps /app /app
-COPY --from=deps /root/.cache/ms-playwright /root/.cache/ms-playwright
+COPY --from=deps /ms-playwright /ms-playwright
 
 RUN useradd --create-home --shell /bin/bash appuser \
-  && chown -R appuser:appuser /app /root/.cache/ms-playwright
+  && chown -R appuser:appuser /app /ms-playwright \
+  && mkdir -p /ms-playwright && chmod 755 /ms-playwright
 
 USER appuser
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV NODE_ENV=production
 
 EXPOSE 10000
