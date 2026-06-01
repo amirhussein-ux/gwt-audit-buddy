@@ -35,6 +35,17 @@ const notificationSchema = new mongoose.Schema(
     },
 
     /**
+     * Primary notification owner
+     * Used to keep audit-event notifications scoped to the user who owns the audit
+     */
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+      description: 'User who owns the affected audit',
+    },
+
+    /**
      * Notification title and message
      */
     title: {
@@ -113,7 +124,7 @@ const notificationSchema = new mongoose.Schema(
      */
     scope: {
       type: String,
-      enum: ['all_users', 'admin_only', 'auditor_only'],
+      enum: ['all_users', 'owner_only', 'admin_only', 'auditor_only'],
       default: 'all_users',
       description: 'Who should receive this notification',
     },
@@ -129,6 +140,7 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ type: 1, createdAt: -1 });
 notificationSchema.index({ auditLog: 1, type: 1 });
 notificationSchema.index({ triggeredBy: 1, createdAt: -1 });
+notificationSchema.index({ ownerId: 1, createdAt: -1 });
 notificationSchema.index({ isRead: 1, createdAt: -1 }); // For unread notifications
 notificationSchema.index({ scope: 1, createdAt: -1 }); // For filtered notifications
 notificationSchema.index({ createdAt: -1 }); // For recent notifications

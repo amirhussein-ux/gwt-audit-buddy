@@ -16,6 +16,8 @@ export const NotificationSchema = z.object({
   auditUrl: z.string().optional(),
   createdAt: z.string(),
   isRead: z.boolean(),
+  ownerId: z.string().optional(),
+  scope: z.string().optional(),
 });
 
 export const RecentNotificationsResponseSchema = z.object({

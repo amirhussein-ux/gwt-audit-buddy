@@ -92,6 +92,21 @@ export default function AuditLogPage() {
   });
 
   useEffect(() => {
+    const loadCompletedAudit = () => {
+      const completedAudit = sessionStorage.getItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
+      if (!completedAudit) return;
+
+      try {
+        const auditData = JSON.parse(completedAudit);
+        if (auditData?.auditLogId) {
+          setCompletedAuditId(auditData.auditLogId);
+          setShowCompletionModal(true);
+        }
+      } catch (e) {
+        console.error('Failed to parse completed audit:', e);
+      }
+    };
+
     const handleAuditComplete = (event: Event) => {
       const customEvent = event as CustomEvent;
       if (customEvent.detail?.auditLogId) {
@@ -101,37 +116,23 @@ export default function AuditLogPage() {
     };
 
     window.addEventListener('auditCompleted', handleAuditComplete);
-
-    const handleStorageChange = () => {
-      const completedAudit = localStorage.getItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
-      if (completedAudit) {
-        try {
-          const auditData = JSON.parse(completedAudit);
-          setCompletedAuditId(auditData.auditLogId);
-          setShowCompletionModal(true);
-        } catch (e) {
-          console.error('Failed to parse completed audit:', e);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
+    loadCompletedAudit();
 
     return () => {
       window.removeEventListener('auditCompleted', handleAuditComplete);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
   const handleViewResults = () => {
     if (completedAuditId) {
-      localStorage.removeItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
+      sessionStorage.removeItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
       setShowCompletionModal(false);
       navigate(`/audit/${completedAuditId}`);
     }
   };
 
   const handleStayOnPage = () => {
-    localStorage.removeItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
+    sessionStorage.removeItem(AUDIT_LOG_CONFIG.STORAGE.COMPLETED_AUDIT);
     setShowCompletionModal(false);
   };
 

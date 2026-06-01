@@ -230,12 +230,12 @@ export default function Dashboard() {
   ];
 
   useEffect(() => {
-    const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+    const activeAudit = sessionStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     if (!activeAudit || location.pathname !== '/dashboard') return;
 
     const auditData = parseStoredJson<{ auditLogId?: string } | null>(activeAudit, null);
     if (!auditData?.auditLogId) {
-      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
       return;
     }
 
@@ -243,7 +243,7 @@ export default function Dashboard() {
     setIsRunning(true);
 
     const savedSteps = parseStoredJson<AuditProgressStep[] | null>(
-      localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS),
+      sessionStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS),
       null
     );
 
@@ -258,12 +258,12 @@ export default function Dashboard() {
    */
   useEffect(() => {
     const resumeInProgressAudit = async () => {
-      // Only run if: user is authenticated, on dashboard, and no active audit in localStorage
+      // Only run if: user is authenticated, on dashboard, and no active audit in sessionStorage
       if (!token || !user || location.pathname !== '/dashboard' || activeAuditId) return;
 
-      const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      const activeAudit = sessionStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
       if (activeAudit) {
-        // Already loaded from localStorage in previous effect
+        // Already loaded from sessionStorage in previous effect
         return;
       }
 
@@ -293,7 +293,7 @@ export default function Dashboard() {
             status: inProgressAudit.status,
           };
 
-          localStorage.setItem(
+          sessionStorage.setItem(
             DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT,
             JSON.stringify(auditData)
           );
@@ -313,18 +313,8 @@ export default function Dashboard() {
   }, [token, user, location.pathname, activeAuditId]);
 
   useEffect(() => {
-    const handleAuditComplete = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail?.auditLogId) {
-        setCompletedAuditId(customEvent.detail.auditLogId);
-        setShowCompletionModal(true);
-      }
-    };
-
-    window.addEventListener('auditCompleted', handleAuditComplete);
-
-    const handleStorageChange = () => {
-      const completedAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
+    const loadCompletedAudit = () => {
+      const completedAudit = sessionStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
       if (!completedAudit) return;
 
       const auditData = parseStoredJson<{ auditLogId?: string } | null>(completedAudit, null);
@@ -334,10 +324,18 @@ export default function Dashboard() {
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    const handleAuditComplete = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.auditLogId) {
+        setCompletedAuditId(customEvent.detail.auditLogId);
+        setShowCompletionModal(true);
+      }
+    };
+
+    window.addEventListener('auditCompleted', handleAuditComplete);
+    loadCompletedAudit();
     return () => {
       window.removeEventListener('auditCompleted', handleAuditComplete);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
@@ -453,8 +451,8 @@ export default function Dashboard() {
 
   const finalizeCancelledAuditUi = () => {
     auditPollingAbortRef.current?.abort();
-    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
-    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+    sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+    sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
     setActiveAuditId(null);
     setTimeout(() => {
       setIsRunning(false);
@@ -501,7 +499,7 @@ export default function Dashboard() {
       const responseData = await response.json();
       setSteps((prev) => prev.map((step) => (step.id === 'fetch' ? { ...step, status: 'done' } : step)));
 
-      localStorage.setItem(
+      sessionStorage.setItem(
         DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT,
         JSON.stringify({
           auditLogId: responseData.auditLogId,
@@ -516,7 +514,7 @@ export default function Dashboard() {
       setAuditError(errorMsg);
       setSteps((prev) => prev.map((step) => (step.status === 'running' ? { ...step, status: 'failed' } : step)));
       setIsRunning(false);
-      localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+      sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
     }
   };
 
@@ -545,7 +543,7 @@ export default function Dashboard() {
           if (idx === clampedIndex) return { ...step, status: 'running' as const };
           return { ...step, status: 'pending' as const };
         });
-        localStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS, JSON.stringify(updated));
+        sessionStorage.setItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS, JSON.stringify(updated));
         return updated;
       });
     };
@@ -605,8 +603,8 @@ export default function Dashboard() {
             auditComplete = true;
             setIsRunning(false);
             setCancellationStateSynced('idle');
-            localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
-            localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+            sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+            sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
             return;
           } else if (auditStatus === 'cancelled') {
             setCancellationStateSynced('complete');
@@ -649,15 +647,15 @@ export default function Dashboard() {
 
     setSteps((prev) => prev.map((step) => ({ ...step, status: 'done' })));
     window.dispatchEvent(new CustomEvent('auditCompleted', { detail: { auditLogId } }));
-    localStorage.setItem(
+    sessionStorage.setItem(
       DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT,
       JSON.stringify({
         auditLogId,
         completedAt: Date.now(),
       })
     );
-    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
-    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+    sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+    sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
     setIsRunning(false);
     setCancellationStateSynced('idle');
     lastProgressStepRef.current = AUDIT_STEPS.length - 1;
@@ -668,7 +666,7 @@ export default function Dashboard() {
 
     const resumePolling = async () => {
       try {
-        const activeAudit = localStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+        const activeAudit = sessionStorage.getItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
         const originalStartTime = parseStoredJson<{ startTime?: number } | null>(activeAudit, null)?.startTime;
         await pollAuditCompletion(activeAuditId, token, originalStartTime);
       } catch (pollError) {
@@ -677,8 +675,8 @@ export default function Dashboard() {
         setSteps((prev) => prev.map((step) => (step.status === 'running' ? { ...step, status: 'failed' } : step)));
         setIsRunning(false);
         setCancellationStateSynced('idle');
-        localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
-        localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+        sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+        sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
       }
     };
 
@@ -690,13 +688,13 @@ export default function Dashboard() {
 
   const handleViewResults = () => {
     if (!completedAuditId) return;
-    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
+    sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
     setShowCompletionModal(false);
     navigate(`/audit/${completedAuditId}`);
   };
 
   const handleStayOnPage = () => {
-    localStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
+    sessionStorage.removeItem(DASHBOARD_CONFIG.STORAGE_KEYS.COMPLETED_AUDIT);
     setShowCompletionModal(false);
   };
 

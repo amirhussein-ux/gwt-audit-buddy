@@ -92,6 +92,12 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+  const clearAuditProgressStorage = useCallback(() => {
+    sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT);
+    sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT);
+    sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUDIT_STEPS);
+    sessionStorage.removeItem('completedAudit');
+  }, []);
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => {
     // Load from sessionStorage on init
@@ -187,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await response.json();
 
         // Store token and user info
+        clearAuditProgressStorage();
         sessionStorage.setItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN, data.token);
         setToken(data.token);
         setUser(data.user);
@@ -198,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(false);
       }
     },
-    [API_BASE]
+    [API_BASE, clearAuditProgressStorage]
   );
 
   /**
@@ -221,16 +228,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       // Clear all user-specific storage to prevent data leakage to next user
       sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
-      sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT);
-      // Also clear Dashboard-specific audit state keys
-      sessionStorage.removeItem('activeAudit');
-      sessionStorage.removeItem('auditSteps');
-      sessionStorage.removeItem('completedAudit');
+      clearAuditProgressStorage();
       setToken(null);
       setUser(null);
       setIsLoading(false);
     }
-  }, [token, API_BASE]);
+  }, [token, API_BASE, clearAuditProgressStorage]);
 
   /**
    * Verify and refresh session
@@ -247,6 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!response.ok) {
         // Token invalid or expired - clear auth state
         sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+        clearAuditProgressStorage();
         setToken(null);
         setUser(null);
         return false;
@@ -261,6 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // Verification returned false - clear auth
         sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+        clearAuditProgressStorage();
         setToken(null);
         setUser(null);
         return false;
@@ -271,7 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // This prevents logging out on temporary network issues
       return false;
     }
-  }, [token, API_BASE, buildAuthHeaders]);
+  }, [token, API_BASE, buildAuthHeaders, clearAuditProgressStorage]);
 
   const updateProfile = useCallback(
     async (payload: Partial<Pick<User, 'username' | 'fullName' | 'positionTitle' | 'officePhone' | 'mobileNumber'>>) => {

@@ -9,6 +9,14 @@ const NOTIFICATION_CONFIG = {
   PAGINATION_DEFAULTS: { skip: 0, limit: 50 },
 };
 
+const buildVisibleNotificationQuery = (userId) => ({
+  $or: [
+    { scope: 'all_users' },
+    { scope: 'owner_only', ownerId: userId },
+    { triggeredBy: userId },
+  ],
+});
+
 /**
  * GET /notifications/recent
  * Get recent notifications for current user
@@ -16,13 +24,12 @@ const NOTIFICATION_CONFIG = {
 router.get('/recent', authenticate, async (req, res) => {
   try {
     const { skip = NOTIFICATION_CONFIG.PAGINATION_DEFAULTS.skip, limit = NOTIFICATION_CONFIG.PAGINATION_DEFAULTS.limit } = req.query;
-
-    // Get notifications visible to this user's role
-    const query = { scope: 'all_users' };
+    const query = buildVisibleNotificationQuery(req.user._id);
 
     const notifications = await Notification.find(query)
       .populate('auditLog', 'auditUrl status')
       .populate('triggeredBy', 'username email')
+      .populate('ownerId', 'username email')
       .sort({ createdAt: -1 })
       .skip(parseInt(skip))
       .limit(parseInt(limit))
@@ -53,7 +60,7 @@ router.get('/unread', authenticate, async (req, res) => {
     const userId = req.user._id;
     // Count notifications where current user is NOT in the readBy array
     const count = await Notification.countDocuments({
-      scope: 'all_users',
+      ...buildVisibleNotificationQuery(userId),
       readBy: { $ne: userId }
     });
 
@@ -84,17 +91,21 @@ router.get('/by-type/:type', authenticate, async (req, res) => {
       });
     }
 
-    const query = { type, scope: 'all_users' };
+    const visibleQuery = {
+      type,
+      ...buildVisibleNotificationQuery(req.user._id),
+    };
 
-    const notifications = await Notification.find(query)
+    const notifications = await Notification.find(visibleQuery)
       .populate('auditLog', 'auditUrl status')
       .populate('triggeredBy', 'username email')
+      .populate('ownerId', 'username email')
       .sort({ createdAt: -1 })
       .skip(parseInt(skip))
       .limit(parseInt(limit))
       .lean();
 
-    const total = await Notification.countDocuments(query);
+    const total = await Notification.countDocuments(visibleQuery);
 
     return res.status(200).json({
       notifications,
@@ -121,7 +132,7 @@ router.put('/:id/read', authenticate, async (req, res) => {
 
     const notification = await Notification.findByIdAndUpdate(
       id,
-      { $addToSet: { readBy: userId } },  // Add user to readBy array (no duplicates)
+      { $addToSet: { readBy: userId }, $set: { isRead: true } },  // Add user to readBy array (no duplicates)
       { new: true }
     );
 
@@ -153,8 +164,8 @@ router.put('/mark-all-read', authenticate, async (req, res) => {
     
     // Add current user to readBy array for all unread notifications (where user is not already in readBy)
     const result = await Notification.updateMany(
-      { scope: 'all_users', readBy: { $ne: userId } },
-      { $addToSet: { readBy: userId } }
+      buildVisibleNotificationQuery(userId),
+      { $addToSet: { readBy: userId }, $set: { isRead: true } }
     );
 
     return res.status(200).json({
@@ -178,7 +189,7 @@ router.get('/stats', authenticate, async (req, res) => {
     const userId = req.user._id;
     
     const stats = await Notification.aggregate([
-      { $match: { scope: 'all_users' } },
+      { $match: buildVisibleNotificationQuery(userId) },
       {
         $group: {
           _id: '$type',
@@ -190,11 +201,11 @@ router.get('/stats', authenticate, async (req, res) => {
     // Count unread for current user (not in readBy array)
     const unreadCount = await Notification.countDocuments({
       isRead: false,
-      scope: 'all_users',
+      ...buildVisibleNotificationQuery(userId),
       readBy: { $ne: userId }
     });
     
-    const totalCount = await Notification.countDocuments({ scope: 'all_users' });
+    const totalCount = await Notification.countDocuments(buildVisibleNotificationQuery(userId));
 
     return res.status(200).json({
       stats,

@@ -110,6 +110,21 @@ export default function ResultsPage() {
   });
 
   useEffect(() => {
+    const loadCompletedAudit = () => {
+      const completedAudit = sessionStorage.getItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
+      if (!completedAudit) return;
+
+      try {
+        const auditData = JSON.parse(completedAudit);
+        if (auditData?.auditLogId) {
+          setCompletedAuditId(auditData.auditLogId);
+          setShowCompletionModal(true);
+        }
+      } catch (e) {
+        console.error('Failed to parse completed audit:', e);
+      }
+    };
+
     const handleAuditComplete = (event: Event) => {
       const customEvent = event as CustomEvent;
       if (customEvent.detail?.auditLogId) {
@@ -119,30 +134,16 @@ export default function ResultsPage() {
     };
 
     window.addEventListener('auditCompleted', handleAuditComplete);
-
-    const handleStorageChange = () => {
-      const completedAudit = localStorage.getItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
-      if (completedAudit) {
-        try {
-          const auditData = JSON.parse(completedAudit);
-          setCompletedAuditId(auditData.auditLogId);
-          setShowCompletionModal(true);
-        } catch (e) {
-          console.error('Failed to parse completed audit:', e);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
+    loadCompletedAudit();
 
     return () => {
       window.removeEventListener('auditCompleted', handleAuditComplete);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
   const handleViewResults = () => {
     if (completedAuditId) {
-      localStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
+      sessionStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
       setShowCompletionModal(false);
       navigate(`${RESULTS_CONFIG.ROUTES.AUDIT}/${completedAuditId}`);
     }
@@ -210,7 +211,7 @@ export default function ResultsPage() {
   }, [searchQuery, dateFilter, statusFilter]);
 
   const handleStayOnPage = () => {
-    localStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
+    sessionStorage.removeItem(RESULTS_CONFIG.STORAGE.COMPLETED_AUDIT);
     setShowCompletionModal(false);
   };
 

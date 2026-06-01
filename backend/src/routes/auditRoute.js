@@ -803,6 +803,7 @@ const createNotification = async (type, auditLog, triggeredBy, metadata = {}) =>
       type,
       auditLog: auditLog._id,
       triggeredBy,
+      ownerId: auditLog.auditedBy || triggeredBy,
       title: titleMap[type] || type,
       message: messageMap[type] || type,
       auditUrl: auditLog.auditUrl,
@@ -811,7 +812,7 @@ const createNotification = async (type, auditLog, triggeredBy, metadata = {}) =>
         agency: auditLog.agency,
         ...metadata,
       },
-      scope: 'all_users',
+      scope: 'owner_only',
     });
 
     await notification.save();
