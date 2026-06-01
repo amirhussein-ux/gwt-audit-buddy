@@ -455,7 +455,7 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
       return;
     }
 
-    const auditResults = await runAudit(url, options);
+    const auditResults = await runAudit(url, { ...options, auditLogId });
     console.log('[Background] Audit completed', {
       checksCount: auditResults.checks?.length || 0,
       pagesAudited: auditResults.pageAudits?.length || 0,
@@ -546,6 +546,16 @@ async function processAuditBackground(auditLogId, url, options, agency, startTim
     console.log('[Background] Audit completed for', { auditLogId, url });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (error instanceof AuditError && error.statusCode === 499) {
+      console.log('[Background] Audit cancelled cleanly mid-run', { auditLogId });
+      const latestAuditLog = await AuditLog.findById(auditLogId).select('cancellation').lean();
+      await AuditLog.findByIdAndUpdate(
+        auditLogId,
+        buildCancelledAuditPayload(latestAuditLog?.cancellation?.requestedBy),
+        { returnDocument: 'after' }
+      );
+      return;
+    }
     console.error('[Background] Audit processing failed:', errorMessage);
     throw error;
   }

@@ -8,6 +8,7 @@ const {
   createSharedContext,
   scrapePageWithContext,
 } = require('../audit/atoms/scraper');
+const AuditLog = require('../models/AuditLog');
 const { runAccessibilityScan }   = require('../audit/atoms/accessibilityScanner');
 const { crawlSiteUrls }          = require('../audit/atoms/siteCrawler');
 const {
@@ -121,6 +122,37 @@ function parseCrawlOptions(options = {}) {
     maxDepth:    boundedMaxDepth,
     concurrency: boundedConcurrency,
   };
+}
+
+async function isAuditCancelled(auditLogId) {
+  if (!auditLogId) {
+    return false;
+  }
+
+  try {
+    const audit = await AuditLog.findById(auditLogId)
+      .select('status cancellation')
+      .lean();
+
+    if (!audit) {
+      return true;
+    }
+
+    return (
+      audit.status === 'cancelled' ||
+      Boolean(audit.cancellation?.requestedAt && !audit.cancellation?.completedAt)
+    );
+  } catch (error) {
+    debugLog('Cancellation check failed', { auditLogId, error: error.message });
+    return false;
+  }
+}
+
+async function throwIfCancelled(auditLogId, stage) {
+  if (await isAuditCancelled(auditLogId)) {
+    debugLog('Audit cancelled', { auditLogId, stage });
+    throw new AuditError('Audit cancelled by user', 499);
+  }
 }
 
 function mapByKey(checks) {
@@ -326,11 +358,14 @@ async function runAudit(targetUrl, options = {}) {
 
   const validated = validateTargetUrl(targetUrl);
   const origin = validated.origin;
+  const { auditLogId } = options;
   const crawlOpts = parseCrawlOptions(options);
 
   const shared = await createSharedContext();
 
   try {
+    await throwIfCancelled(auditLogId, 'before crawl');
+
     // Step 1: Crawl site
     debugLog('Starting site crawl', { origin, maxPages: crawlOpts.maxPages });
 
@@ -356,6 +391,8 @@ async function runAudit(targetUrl, options = {}) {
       crawledPages = [{ url: targetUrl }];
     }
 
+    await throwIfCancelled(auditLogId, 'after crawl');
+
     // Step 2: Audit each page
     debugLog('Starting per-page audits', { pageCount: crawledPages.length });
 
@@ -366,6 +403,8 @@ async function runAudit(targetUrl, options = {}) {
     const AUDIT_CONCURRENCY = process.env.NODE_ENV === 'production' ? 4 : 6;
     
     for (let i = 0; i < crawledPages.length; i += AUDIT_CONCURRENCY) {
+      await throwIfCancelled(auditLogId, `before batch ${i}`);
+
       const batch = crawledPages.slice(i, i + AUDIT_CONCURRENCY);
       debugLog('Processing batch', { batchStart: i, batchSize: batch.length, totalPages: crawledPages.length });
       
@@ -416,6 +455,8 @@ async function runAudit(targetUrl, options = {}) {
           debugLog('Page audit rejected', { reason: result.reason?.message });
         }
       }
+
+      await throwIfCancelled(auditLogId, `after batch ${i}`);
     }
 
     debugLog('Per-page audits completed', { 
@@ -426,6 +467,8 @@ async function runAudit(targetUrl, options = {}) {
     if (allChecks.length === 0) {
       debugLog('WARNING: No checks were generated', { pagesAudited: pageResults.length });
     }
+
+    await throwIfCancelled(auditLogId, 'before performance trials');
 
     // Collect performance trials on homepage
     debugLog('Collecting performance trials', { url: targetUrl });
@@ -438,6 +481,8 @@ async function runAudit(targetUrl, options = {}) {
     allChecks.unshift(performanceCheck); // Add performance check at the beginning
 
     debugLog('Performance trials collected', { trials: performanceTrials });
+
+    await throwIfCancelled(auditLogId, 'before custom 404 check');
 
     // Check for custom 404 page
     debugLog('Checking for custom 404 page', { origin });

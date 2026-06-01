@@ -52,6 +52,7 @@ const DASHBOARD_CONFIG = {
     MAX_TOTAL_TIME_MS: 2 * 60 * 60 * 1000,
     INITIAL_INTERVAL_MS: 3000,
     MAX_INTERVAL_MS: 10000,
+    CANCELLATION_INTERVAL_MS: 2000,
     STEP_ADVANCE_MS: 15000,
   },
 };
@@ -619,8 +620,15 @@ export default function Dashboard() {
           }
         }
 
-        await wait(pollInterval);
-        pollInterval = Math.min(pollInterval + 500, maxPollInterval);
+        const currentInterval = isCancellationPending
+          ? DASHBOARD_CONFIG.AUDIT_POLLING.CANCELLATION_INTERVAL_MS
+          : pollInterval;
+
+        await wait(currentInterval);
+
+        if (!isCancellationPending) {
+          pollInterval = Math.min(pollInterval + 500, maxPollInterval);
+        }
         elapsedTime = Date.now() - startTime;
       } catch (pollError) {
         if (controller.signal.aborted) {
