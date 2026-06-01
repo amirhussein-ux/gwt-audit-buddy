@@ -94,13 +94,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => {
-    // Load from localStorage on init
-    return typeof window !== 'undefined' ? localStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : null;
+    // Load from sessionStorage on init
+    return typeof window !== 'undefined' ? sessionStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : null;
   });
   // Start as true when a token exists so ProtectedRoute waits for
   // the initial verifySession() call before deciding to redirect.
   const [isLoading, setIsLoading] = useState(() =>
-    typeof window !== 'undefined' ? !!localStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : false
+    typeof window !== 'undefined' ? !!sessionStorage.getItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN) : false
   );
 
   const buildAuthHeaders = useCallback((authToken: string, includeContentType = true) => {
@@ -187,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await response.json();
 
         // Store token and user info
-        localStorage.setItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN, data.token);
+        sessionStorage.setItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN, data.token);
         setToken(data.token);
         setUser(data.user);
         return data.user as User;
@@ -220,12 +220,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[Auth] Logout error:', error);
     } finally {
       // Clear all user-specific storage to prevent data leakage to next user
-      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
-      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT);
+      sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+      sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.LAST_AUDIT_RESULT);
       // Also clear Dashboard-specific audit state keys
-      localStorage.removeItem('activeAudit');
-      localStorage.removeItem('auditSteps');
-      localStorage.removeItem('completedAudit');
+      sessionStorage.removeItem('activeAudit');
+      sessionStorage.removeItem('auditSteps');
+      sessionStorage.removeItem('completedAudit');
       setToken(null);
       setUser(null);
       setIsLoading(false);
@@ -246,7 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!response.ok) {
         // Token invalid or expired - clear auth state
-        localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+        sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
         setToken(null);
         setUser(null);
         return false;
@@ -260,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return true;
       } else {
         // Verification returned false - clear auth
-        localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+        sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
         setToken(null);
         setUser(null);
         return false;
@@ -336,7 +336,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(data.error || 'Failed to update password');
       }
 
-      localStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
+      sessionStorage.removeItem(AUTH_CONFIG.STORAGE_KEYS.AUTH_TOKEN);
       setToken(null);
       setUser(null);
     },
