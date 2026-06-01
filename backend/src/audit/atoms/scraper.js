@@ -96,13 +96,18 @@ async function scrapePageWithContext(context, targetUrl, options = {}) {
       timeout: timeoutMs,
     });
 
-    // Reduced fixed pause — enough for dynamic mastheads (PST clocks) to render.
-    await page.waitForTimeout(1200);
+    // OPTIMIZATION: Reduced wait from 1200ms to dynamic 700ms timeout
+    // Wait for network to settle but cap at 700ms
+    await Promise.race([
+      page.waitForLoadState('networkidle'),
+      new Promise(resolve => setTimeout(resolve, 700)),
+    ]);
 
     // Guard: ensure DOM has links before we start auditing.
     try {
+      // OPTIMIZATION: Reduced timeout from 4000ms to 2000ms
       await page.waitForFunction(() => document.querySelectorAll('a').length > 5, {
-        timeout: 4000,
+        timeout: 2000,
       });
     } catch {
       // Non-fatal: some pages legitimately have very few links.
@@ -180,11 +185,17 @@ async function scrapePage(targetUrl, options = {}) {
       timeout: timeoutMs,
     });
 
-    await page.waitForTimeout(1200);
+    // OPTIMIZATION: Reduced wait from 1200ms to dynamic 700ms timeout
+    // Wait for network to settle but cap at 700ms
+    await Promise.race([
+      page.waitForLoadState('networkidle'),
+      new Promise(resolve => setTimeout(resolve, 700)),
+    ]);
 
     try {
+      // OPTIMIZATION: Reduced timeout from 4000ms to 2000ms
       await page.waitForFunction(() => document.querySelectorAll('a').length > 5, {
-        timeout: 4000,
+        timeout: 2000,
       });
     } catch {
       // non-fatal

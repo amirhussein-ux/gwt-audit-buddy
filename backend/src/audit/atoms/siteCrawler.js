@@ -105,8 +105,9 @@ async function extractLinks(page, origin) {
     if (linkCount === 0) {
       debugLog('No links found initially, waiting for DOM...', { url: page.url() });
       try {
+        // OPTIMIZATION: Reduced timeout from 5000ms to 2500ms (gov sites are mostly server-rendered)
         await page.waitForFunction(() => document.querySelectorAll('a[href]').length > 0, {
-          timeout: 5000,
+          timeout: 2500,
         });
         linkCount = await page.$$eval('a[href]', (anchors) => anchors.length);
         debugLog('Links found after wait', { url: page.url(), linkCount });
@@ -280,8 +281,12 @@ async function crawlSiteUrls(startUrl, options = {}) {
             const response = await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
             debugLog('Navigation complete', { url: item.url, depth: item.depth, statusCode: response?.status() });
 
-            // Wait a bit for dynamic content to render
-            await page.waitForTimeout(800);
+            // OPTIMIZATION: Reduced wait from 800ms to dynamic 500ms timeout
+            // Wait for network to settle but cap at 500ms
+            await Promise.race([
+              page.waitForLoadState('networkidle'),
+              new Promise(resolve => setTimeout(resolve, 500)),
+            ]);
 
             // Only extract child links if we haven't hit depth limit.
             let childLinks = [];

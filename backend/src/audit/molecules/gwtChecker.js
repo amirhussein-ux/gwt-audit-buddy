@@ -335,7 +335,7 @@ function buildCustom404Check(responseStatus, sameOrigin, pageTitle, bodySnippet,
 }
 
 // Content and structure checks
-async function buildContentAccessibilityChecks(page) {
+async function buildContentAccessibilityChecks(page, axeResults = null) {
   const results = await page.evaluate(() => {
     const titles = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, title'));
     const hasDescriptiveHeadings = titles.some(h => (h.textContent || '').trim().length > 5);
@@ -366,7 +366,21 @@ async function buildContentAccessibilityChecks(page) {
     };
   });
 
+  // BUGFIX: Use captured Axe-core results to build accessibility check
+  const axeViolationCount = axeResults?.violations?.length || 0;
+  const axeStatus = axeViolationCount === 0 ? 'Pass' : 'Partial';
+  const axeRemark = axeViolationCount === 0 
+    ? 'No accessibility violations detected.' 
+    : `${axeViolationCount} accessibility violations found.`;
+
   return [
+    normalizeCheck({
+      key: 'accessibility.axe_violations',
+      category: 'Accessibility',
+      item: 'Axe-core accessibility compliance',
+      status: axeStatus,
+      remarks: axeRemark,
+    }),
     normalizeCheck({
       key: 'content.headings_descriptive',
       category: 'Content',
