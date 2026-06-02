@@ -204,13 +204,13 @@ export default function AuditDetailPage() {
     },
     retry: (failureCount, err) => {
       const status = err instanceof AuditDetailError ? err.status : undefined;
-      // Permission/not found should not be retried.
-      if (status === 403 || status === 404) {
+      // Permission/not found and server-side failures should not be retried.
+      if (status === 403 || status === 404 || (typeof status === 'number' && status >= 500)) {
         return false;
       }
-      return failureCount < 2;
+      return failureCount < 1;
     },
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true, // Refetch when returning to window
   });
 

@@ -24,6 +24,16 @@ const getRelativeTime = (date: string) => {
   return notifTime.toLocaleDateString();
 };
 
+class NotificationFetchError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'NotificationFetchError';
+    this.status = status;
+  }
+}
+
 const NotificationCenter = () => {
   const { token, user } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -59,9 +69,11 @@ const NotificationCenter = () => {
       );
 
       if (response.status === 401) {
-        throw new Error('Unable to load notifications right now. Please refresh the page.');
+        throw new NotificationFetchError('Unable to load notifications right now. Please refresh the page.', 401);
       }
-      if (!response.ok) throw new Error('Failed to fetch notifications');
+      if (!response.ok) {
+        throw new NotificationFetchError('Failed to fetch notifications', response.status);
+      }
 
       const raw = await response.json().catch(() => ({}));
       const parsed = parseRecentNotifications(raw);
@@ -70,15 +82,21 @@ const NotificationCenter = () => {
       return parsed.data;
     },
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
-    refetchInterval: showDropdown ? 10000 : 60000,
+    refetchInterval: (query) => {
+      if (query.state.error) {
+        return false;
+      }
+      return showDropdown ? 10000 : 60000;
+    },
     staleTime: 5000,
     refetchOnWindowFocus: false,
     refetchIntervalInBackground: false,
     retry: (failureCount, err) => {
-      if (err instanceof Error && err.message.includes('Unable to load notifications right now')) {
+      const status = err instanceof NotificationFetchError ? err.status : undefined;
+      if (status === 401 || (typeof status === 'number' && status >= 500)) {
         return false;
       }
-      return failureCount < 2;
+      return failureCount < 1;
     },
   });
 
@@ -96,9 +114,11 @@ const NotificationCenter = () => {
       });
 
       if (response.status === 401) {
-        throw new Error('Unable to load unread notifications right now. Please refresh the page.');
+        throw new NotificationFetchError('Unable to load unread notifications right now. Please refresh the page.', 401);
       }
-      if (!response.ok) throw new Error('Failed to fetch unread count');
+      if (!response.ok) {
+        throw new NotificationFetchError('Failed to fetch unread count', response.status);
+      }
 
       const raw = await response.json().catch(() => ({}));
       const parsed = parseUnreadCount(raw);
@@ -107,15 +127,21 @@ const NotificationCenter = () => {
       return parsed.data;
     },
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
-    refetchInterval: showDropdown ? 10000 : 60000,
+    refetchInterval: (query) => {
+      if (query.state.error) {
+        return false;
+      }
+      return showDropdown ? 10000 : 60000;
+    },
     staleTime: 5000,
     refetchOnWindowFocus: false,
     refetchIntervalInBackground: false,
     retry: (failureCount, err) => {
-      if (err instanceof Error && err.message.includes('Unable to load unread notifications right now')) {
+      const status = err instanceof NotificationFetchError ? err.status : undefined;
+      if (status === 401 || (typeof status === 'number' && status >= 500)) {
         return false;
       }
-      return failureCount < 2;
+      return failureCount < 1;
     },
   });
 

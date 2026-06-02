@@ -550,6 +550,8 @@ export default function Dashboard() {
     let pollInterval = DASHBOARD_CONFIG.AUDIT_POLLING.INITIAL_INTERVAL_MS;
     const maxPollInterval = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_INTERVAL_MS;
     const maxTotalTime = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_TOTAL_TIME_MS;
+    const serverErrorCooldownMs = 30000;
+    const maxConsecutiveServerErrors = 2;
     let elapsedTime = 0;
     let consecutiveServerErrors = 0;
     const startTime = originalStartTime || Date.now();
@@ -613,7 +615,7 @@ export default function Dashboard() {
           if (checkResponse.status >= 500) {
             consecutiveServerErrors += 1;
 
-            if (consecutiveServerErrors >= 5) {
+            if (consecutiveServerErrors >= maxConsecutiveServerErrors) {
               setAuditError(
                 'The audit service is temporarily unavailable. Your audit may still be running. Please refresh the page in a few minutes.'
               );
@@ -622,7 +624,9 @@ export default function Dashboard() {
               return;
             }
 
-            pollInterval = Math.min(pollInterval * 2, 30000);
+            // Back off aggressively so a temporary backend outage does not turn
+            // into a tight retry loop across multiple open tabs.
+            pollInterval = Math.min(Math.max(pollInterval * 2, serverErrorCooldownMs), 60000);
             elapsedTime = Date.now() - startTime;
             await wait(pollInterval);
             continue;
