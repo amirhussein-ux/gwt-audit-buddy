@@ -25,7 +25,7 @@ const getRelativeTime = (date: string) => {
 };
 
 const NotificationCenter = () => {
-  const { token, user, logout } = useAuth();
+  const { token, user } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [markAllConfirmationOpen, setMarkAllConfirmationOpen] = useState(false);
@@ -59,8 +59,7 @@ const NotificationCenter = () => {
       );
 
       if (response.status === 401) {
-        await logout();
-        throw new Error('Session expired. Please sign in again.');
+        throw new Error('Unable to load notifications right now. Please refresh the page.');
       }
       if (!response.ok) throw new Error('Failed to fetch notifications');
 
@@ -74,7 +73,7 @@ const NotificationCenter = () => {
     refetchInterval: 10000,
     staleTime: 5000,
     retry: (failureCount, err) => {
-      if (err instanceof Error && err.message.includes('Session expired')) {
+      if (err instanceof Error && err.message.includes('Unable to load notifications right now')) {
         return false;
       }
       return failureCount < 2;
@@ -95,8 +94,7 @@ const NotificationCenter = () => {
       });
 
       if (response.status === 401) {
-        await logout();
-        throw new Error('Session expired. Please sign in again.');
+        throw new Error('Unable to load unread notifications right now. Please refresh the page.');
       }
       if (!response.ok) throw new Error('Failed to fetch unread count');
 
@@ -110,7 +108,7 @@ const NotificationCenter = () => {
     refetchInterval: 10000,
     staleTime: 5000,
     retry: (failureCount, err) => {
-      if (err instanceof Error && err.message.includes('Session expired')) {
+      if (err instanceof Error && err.message.includes('Unable to load unread notifications right now')) {
         return false;
       }
       return failureCount < 2;
