@@ -24,6 +24,14 @@ const getRelativeTime = (date: string) => {
   return notifTime.toLocaleDateString();
 };
 
+const hasActiveAuditInStorage = () => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return Boolean(sessionStorage.getItem('activeAudit'));
+};
+
 class NotificationFetchError extends Error {
   status?: number;
 
@@ -83,7 +91,7 @@ const NotificationCenter = () => {
     },
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
     refetchInterval: (query) => {
-      if (query.state.error) {
+      if (query.state.error || auditIsRunning) {
         return false;
       }
       return showDropdown ? 10000 : 60000;
@@ -128,7 +136,7 @@ const NotificationCenter = () => {
     },
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
     refetchInterval: (query) => {
-      if (query.state.error) {
+      if (query.state.error || auditIsRunning) {
         return false;
       }
       return showDropdown ? 10000 : 60000;
@@ -165,6 +173,7 @@ const NotificationCenter = () => {
   const notificationsQueryError = notificationsError || unreadError;
   const isNotificationsBusy = isNotificationsLoading || isUnreadLoading;
   const isRetryingNotifications = isNotificationsFetching || isUnreadFetching;
+  const auditIsRunning = hasActiveAuditInStorage();
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
