@@ -243,6 +243,25 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
   const { parsed: parsedUrl } = urlValidation;
 
   try {
+    // Prevent duplicate audits from the same user while one is already running.
+    // This avoids accidental double-starts from reloads, retries, or duplicate tabs.
+    const existingInProgressAudit = await AuditLog.findOne({
+      auditedBy: req.user._id,
+      status: 'in_progress',
+      isArchived: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (existingInProgressAudit) {
+      return res.status(409).json({
+        error: 'You already have an audit in progress.',
+        message: 'Resume the existing audit instead of starting a new one.',
+        auditLogId: existingInProgressAudit._id,
+        status: existingInProgressAudit.status,
+      });
+    }
+
     // Determine or create agency
     let agency = null;
     let agencyWasCreated = false;

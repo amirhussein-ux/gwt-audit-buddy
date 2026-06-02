@@ -492,6 +492,28 @@ export default function Dashboard() {
         }),
       });
 
+      if (response.status === 409) {
+        const conflict = await response.json().catch(() => ({}));
+        const conflictAuditId = conflict?.auditLogId;
+
+        if (conflictAuditId) {
+          sessionStorage.setItem(
+            DASHBOARD_CONFIG.STORAGE_KEYS.ACTIVE_AUDIT,
+            JSON.stringify({
+              auditLogId: conflictAuditId,
+              startTime: Date.now(),
+              url,
+            })
+          );
+
+          setActiveAuditId(conflictAuditId);
+          setIsRunning(true);
+          return;
+        }
+
+        throw new Error(conflict?.error || 'An audit is already in progress.');
+      }
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || `HTTP ${response.status}: Audit failed`);

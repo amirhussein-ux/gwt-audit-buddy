@@ -70,8 +70,10 @@ const NotificationCenter = () => {
       return parsed.data;
     },
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
-    refetchInterval: 10000,
+    refetchInterval: showDropdown ? 10000 : 60000,
     staleTime: 5000,
+    refetchOnWindowFocus: false,
+    refetchIntervalInBackground: false,
     retry: (failureCount, err) => {
       if (err instanceof Error && err.message.includes('Unable to load notifications right now')) {
         return false;
@@ -105,8 +107,10 @@ const NotificationCenter = () => {
       return parsed.data;
     },
     enabled: !!token && user?.settings?.notifications?.inAppEnabled !== false,
-    refetchInterval: 10000,
+    refetchInterval: showDropdown ? 10000 : 60000,
     staleTime: 5000,
+    refetchOnWindowFocus: false,
+    refetchIntervalInBackground: false,
     retry: (failureCount, err) => {
       if (err instanceof Error && err.message.includes('Unable to load unread notifications right now')) {
         return false;
