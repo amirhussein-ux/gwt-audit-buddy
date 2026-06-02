@@ -88,9 +88,9 @@ function parseCrawlOptions(options = {}) {
   const isProduction = process.env.NODE_ENV === 'production';
   // Keep production conservative so the single Render web dyno is less likely to
   // get overwhelmed by multiple Playwright pages at once.
-  const maxPagesCap = isProduction ? 15 : 50;
-  const maxDepthCap = isProduction ? 2 : 4;
-  const concurrencyCap = isProduction ? 2 : 8;
+  const maxPagesCap = isProduction ? 8 : 50;
+  const maxDepthCap = isProduction ? 1 : 4;
+  const concurrencyCap = isProduction ? 1 : 8;
 
   // Validate and bound maxPages (prevent DoS through resource exhaustion)
   const requestedMaxPages = Number(options.maxPages);
@@ -402,7 +402,7 @@ async function runAudit(targetUrl, options = {}) {
     const pageResults = [];
     
     // Keep production conservative to reduce memory spikes and Render 502s.
-    const AUDIT_CONCURRENCY = process.env.NODE_ENV === 'production' ? 2 : 6;
+  const AUDIT_CONCURRENCY = process.env.NODE_ENV === 'production' ? 1 : 6;
     
     for (let i = 0; i < crawledPages.length; i += AUDIT_CONCURRENCY) {
       await throwIfCancelled(auditLogId, `before batch ${i}`);
@@ -477,7 +477,7 @@ async function runAudit(targetUrl, options = {}) {
     const performanceTrials = await collectPerformanceTrials(
       shared.context,
       targetUrl,
-      process.env.NODE_ENV === 'production' ? 2 : 3
+      process.env.NODE_ENV === 'production' ? 1 : 3
     );
     const performanceCheck = buildPerformanceCheckFromTrials(performanceTrials);
     allChecks.unshift(performanceCheck); // Add performance check at the beginning

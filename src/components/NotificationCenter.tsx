@@ -50,6 +50,7 @@ const NotificationCenter = () => {
   const [isMarkingAll, setIsMarkingAll] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const auditIsRunning = hasActiveAuditInStorage();
 
   const NOTIFICATION_CONFIG = {
     API: {
@@ -173,7 +174,6 @@ const NotificationCenter = () => {
   const notificationsQueryError = notificationsError || unreadError;
   const isNotificationsBusy = isNotificationsLoading || isUnreadLoading;
   const isRetryingNotifications = isNotificationsFetching || isUnreadFetching;
-  const auditIsRunning = hasActiveAuditInStorage();
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
