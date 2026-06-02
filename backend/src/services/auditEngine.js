@@ -86,9 +86,11 @@ function validateTargetUrl(url) {
 
 function parseCrawlOptions(options = {}) {
   const isProduction = process.env.NODE_ENV === 'production';
-  const maxPagesCap = isProduction ? 30 : 50;      // Increased from 15 to 30 pages
-  const maxDepthCap = isProduction ? 3 : 4;        // Increased from 2 to 3 depth levels
-  const concurrencyCap = isProduction ? 5 : 8;     // Increased from 2 to 5 concurrent browsers
+  // Keep production conservative so the single Render web dyno is less likely to
+  // get overwhelmed by multiple Playwright pages at once.
+  const maxPagesCap = isProduction ? 15 : 50;
+  const maxDepthCap = isProduction ? 2 : 4;
+  const concurrencyCap = isProduction ? 2 : 8;
 
   // Validate and bound maxPages (prevent DoS through resource exhaustion)
   const requestedMaxPages = Number(options.maxPages);
@@ -118,8 +120,8 @@ function parseCrawlOptions(options = {}) {
   });
 
   return {
-    maxPages:    boundedMaxPages,
-    maxDepth:    boundedMaxDepth,
+    maxPages: boundedMaxPages,
+    maxDepth: boundedMaxDepth,
     concurrency: boundedConcurrency,
   };
 }
@@ -399,8 +401,8 @@ async function runAudit(targetUrl, options = {}) {
     const allChecks = [];
     const pageResults = [];
     
-    // OPTIMIZATION: Run page audits in parallel batches instead of sequentially (10-20 min saved)
-    const AUDIT_CONCURRENCY = process.env.NODE_ENV === 'production' ? 4 : 6;
+    // Keep production conservative to reduce memory spikes and Render 502s.
+    const AUDIT_CONCURRENCY = process.env.NODE_ENV === 'production' ? 2 : 6;
     
     for (let i = 0; i < crawledPages.length; i += AUDIT_CONCURRENCY) {
       await throwIfCancelled(auditLogId, `before batch ${i}`);

@@ -14,6 +14,7 @@ const Notification = require('../models/Notification');
 const mongoose = require('mongoose');
 
 const router = express.Router();
+let activeAuditJob = null;
 
 // Audit configuration constants
 const AUDIT_CONFIG = {
@@ -243,6 +244,15 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
   const { parsed: parsedUrl } = urlValidation;
 
   try {
+    if (activeAuditJob?.status === 'in_progress') {
+      return res.status(409).json({
+        error: 'The audit service is busy running another audit.',
+        message: 'Please wait for the current audit to finish before starting a new one.',
+        auditLogId: activeAuditJob.auditLogId,
+        status: activeAuditJob.status,
+      });
+    }
+
     // Prevent duplicate audits from the same user while one is already running.
     // This avoids accidental double-starts from reloads, retries, or duplicate tabs.
     const existingInProgressAudit = await AuditLog.findOne({
@@ -304,6 +314,12 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
     });
 
     const savedAuditLog = await auditLog.save();
+    activeAuditJob = {
+      auditLogId: savedAuditLog._id.toString(),
+      auditedBy: req.user._id?.toString(),
+      status: 'in_progress',
+      startedAt: new Date(),
+    };
 
     // RETURN IMMEDIATELY with audit ID
     res.status(202).json({
@@ -364,6 +380,11 @@ router.post('/', authenticate, auditLimiter, async (req, res) => {
             );
           })
           .catch((err) => console.error('[Cleanup] Failed to update status:', err));
+      })
+      .finally(() => {
+        if (activeAuditJob?.auditLogId === savedAuditLog._id.toString()) {
+          activeAuditJob = null;
+        }
       });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

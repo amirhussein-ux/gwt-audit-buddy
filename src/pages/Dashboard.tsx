@@ -551,6 +551,7 @@ export default function Dashboard() {
     const maxPollInterval = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_INTERVAL_MS;
     const maxTotalTime = DASHBOARD_CONFIG.AUDIT_POLLING.MAX_TOTAL_TIME_MS;
     let elapsedTime = 0;
+    let consecutiveServerErrors = 0;
     const startTime = originalStartTime || Date.now();
 
     const updateProgressSteps = (nextIndex: number) => {
@@ -595,6 +596,43 @@ export default function Dashboard() {
           cache: 'no-store',
           signal: controller.signal,
         });
+
+        if (!checkResponse.ok) {
+          if (checkResponse.status === 401) {
+            throw new Error('Your session expired while the audit was running. Please sign in again.');
+          }
+
+          if (checkResponse.status === 403) {
+            throw new Error('You no longer have access to this audit.');
+          }
+
+          if (checkResponse.status === 404) {
+            throw new Error('This audit could not be found anymore.');
+          }
+
+          if (checkResponse.status >= 500) {
+            consecutiveServerErrors += 1;
+
+            if (consecutiveServerErrors >= 5) {
+              setAuditError(
+                'The audit service is temporarily unavailable. Your audit may still be running. Please refresh the page in a few minutes.'
+              );
+              setIsRunning(false);
+              setCancellationStateSynced('idle');
+              return;
+            }
+
+            pollInterval = Math.min(pollInterval * 2, 30000);
+            elapsedTime = Date.now() - startTime;
+            await wait(pollInterval);
+            continue;
+          }
+
+          const errorBody = await checkResponse.json().catch(() => ({}));
+          throw new Error(errorBody?.error || `Audit polling failed with status ${checkResponse.status}`);
+        }
+
+        consecutiveServerErrors = 0;
 
         if (checkResponse.ok) {
           const auditData = (await checkResponse.json()) as AuditStatusResponse;
